@@ -16,10 +16,11 @@ node_modules/
 *.tmp
 *.log
 dist/
+frontend/Mon Coffre - Application (backend).html
+cloudflare/dist/
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-

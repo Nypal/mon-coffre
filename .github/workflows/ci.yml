@@ -1,0 +1,54 @@
+name: Safety Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate source, security, and build
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Security scan
+        run: python scripts/security_scan.py
+
+      - name: Verify locked design source
+        run: python scripts/verify_design_lock.py
+
+      - name: Check JavaScript syntax
+        run: node --check frontend/mc_logic.js
+
+      - name: Check Python syntax
+        run: python -m py_compile frontend/build_mc.py scripts/*.py
+
+      - name: Rebuild application bundle
+        working-directory: frontend
+        run: python build_mc.py
+
+      - name: Verify generated bundle
+        run: python scripts/verify_generated_bundle.py
+
+      - name: Build Cloudflare Worker package
+        run: python scripts/build_cloudflare_worker.py
+

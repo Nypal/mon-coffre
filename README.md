@@ -38,8 +38,19 @@ The project demonstrates:
 ## Repository Layout
 
 ```text
+.github/workflows/
+  ci.yml                           Pull request and main branch safety checks
+  deploy-cloudflare.yml            Production deployment workflow
+
+scripts/
+  security_scan.py                 High-confidence secret scan
+  verify_design_lock.py            Locked design hash check
+  configure_cloud.py               CI-only Supabase config patch
+  build_cloudflare_worker.py       Cloudflare Worker package builder
+
 frontend/
   Mon Coffre - Application.html   Locked design source
+  design-lock.sha256              Locked design source hash
   mc_logic.js                     Application logic and cloud adapter
   build_mc.py                     Rebuild script for the compiled bundle
 
@@ -53,6 +64,8 @@ docs/
   ARCHITECTURE.md                 Technical architecture
   SECURITY.md                     Security model
   DEPLOYMENT.md                   Deployment notes
+  RELEASE_PROCESS.md              Secure GitHub-to-production process
+  ONBOARDING_AND_ATTACHMENTS.md   Product specification for onboarding and receipts
   VALIDATION.md                   Validation summary
 ```
 
@@ -82,7 +95,16 @@ Production uses only a Supabase publishable key in the browser. Data protection 
 - Production auth/cloud smoke tests: passed
 - Remaining dashboard advisory: leaked password protection can be enabled from Supabase Auth settings
 
+## Update Process
+
+Updates are intended to flow through GitHub:
+
+```text
+feature branch -> pull request -> safety checks -> review -> merge to main -> Cloudflare deployment
+```
+
+The production workflow requires GitHub Secrets, a `production` environment, and `PRODUCTION_DEPLOY_ENABLED=true` before automatic deployment from `main` is active.
+
 ## Portfolio Context
 
 This project was built as a practical full-stack product: design preservation, backend security, cloud deployment, and production readiness were treated as first-class requirements.
-
