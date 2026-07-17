@@ -33,3 +33,25 @@ The original locked design source should remain unchanged.
 
 `cloudflare/wrangler.toml` shows the Worker deployment configuration. The generated production bundle is intentionally not committed here.
 
+## GitHub Actions
+
+Production deployment is handled by `.github/workflows/deploy-cloudflare.yml`.
+
+Required secrets:
+
+```text
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+```
+
+The workflow patches `MC_CLOUD` only inside the CI workspace, rebuilds the app, packages the Worker, and deploys with Wrangler.
+
+Automatic deployment from `main` requires:
+
+```text
+PRODUCTION_DEPLOY_ENABLED=true
+```
+
+Without that variable, deployment remains manual.
