@@ -27,6 +27,17 @@ export default {{
       return new Response("Method Not Allowed", {{ status: 405 }});
     }}
 
+    const url = new URL(request.url);
+    if (url.pathname === "/favicon.ico") {{
+      return new Response(null, {{
+        status: 204,
+        headers: {{
+          "cache-control": "public, max-age=86400",
+          "x-content-type-options": "nosniff"
+        }}
+      }});
+    }}
+
     return new Response(request.method === "HEAD" ? null : INDEX_HTML, {{
       headers: {{
         "content-type": "text/html; charset=utf-8",

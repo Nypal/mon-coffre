@@ -67,7 +67,7 @@ Suggested steps:
 
 The current application already supports private attachments for expenses, debts, debt payments, loans, and loan repayments.
 
-The next schema change should add income attachments:
+The schema includes income attachments:
 
 ```text
 income_attachments

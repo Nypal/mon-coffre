@@ -206,6 +206,129 @@ class Component extends DCLogic {
     if(this._cloudEnabled()){ this._cloudLogin(mode||"signin"); return; }
     this.go("dashboard");
   }
+  _onboardKey(){
+    var uid=this._cloudUser && this._cloudUser.id ? this._cloudUser.id : "local";
+    return "moncoffre.onboarding."+uid;
+  }
+  _shouldOfferOnboarding(snapshot){
+    if(!this._cloudEnabled() || !this._cloudUser || !snapshot) return false;
+    if(this._onboardingOpen || this._onboardingDismissed) return false;
+    try{ if(localStorage.getItem(this._onboardKey())) return false; }catch(e){}
+    var keys=["accounts","incomes","expenses","savings","pots","debts","loans"];
+    var count=0;
+    for(var i=0;i<keys.length;i++) count+=(snapshot[keys[i]]||[]).length;
+    return count===0;
+  }
+  _markOnboardingDone(){
+    try{ localStorage.setItem(this._onboardKey(),"1"); }catch(e){}
+  }
+  _openOnboarding(){
+    if(this._onboardingOpen) return;
+    var self=this, step=0, answers={}, modal=null;
+    this._onboardingOpen=true;
+    var steps=[
+      {title:"Configurer ton coffre", sub:"On prépare la devise et les bases de ton espace.", fields:function(){ return [
+        {key:"currency",label:"Devise principale",type:"chips",options:[{value:"USD",label:"$ USD"},{value:"EUR",label:"€ EUR"},{value:"XOF",label:"FCFA XOF"}],value:self.state.currency||"USD"},
+        {key:"name",label:"Nom affiché",type:"text",opt:true,placeholder:"Ex : Nypal"}
+      ]; }},
+      {title:"Tes comptes", sub:"Ajoute tes soldes de départ. Tu pourras les modifier après.", fields:function(){ return [
+        {key:"bank",label:"Compte bancaire",type:"amount",value:""},
+        {key:"cash",label:"Espèces",type:"number",value:""},
+        {key:"mobile",label:"Mobile Money / wallet",type:"number",value:""}
+      ]; }},
+      {title:"Tes revenus", sub:"Indique ce qui revient souvent dans le mois.", fields:function(){ return [
+        {key:"salary",label:"Salaire mensuel",type:"amount",value:""},
+        {key:"business",label:"Business / freelance",type:"number",value:""},
+        {key:"otherIncome",label:"Autre revenu",type:"number",value:""}
+      ]; }},
+      {title:"Tes dépenses fixes", sub:"Quelques repères suffisent pour démarrer le tableau de bord.", fields:function(){ return [
+        {key:"rent",label:"Loyer / logement",type:"amount",value:""},
+        {key:"food",label:"Alimentation",type:"number",value:""},
+        {key:"transport",label:"Transport",type:"number",value:""},
+        {key:"bills",label:"Factures / internet / téléphone",type:"number",value:""}
+      ]; }},
+      {title:"Objectifs et dettes", sub:"Dernière étape : ce que tu veux construire ou rembourser.", fields:function(){ return [
+        {key:"emergency",label:"Objectif fonds d'urgence",type:"amount",value:""},
+        {key:"debt",label:"Dette à suivre",type:"number",value:""},
+        {key:"debtName",label:"Nom de la dette",type:"text",opt:true,placeholder:"Ex : Carte de crédit"}
+      ]; }}
+    ];
+    function header(sub){
+      var h=document.createElement("div");
+      h.style.cssText="margin-bottom:14px";
+      h.innerHTML='<div style="height:7px;background:#EEF1F0;border-radius:99px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:'+Math.round((step+1)/steps.length*100)+'%;background:#1E5081;border-radius:99px"></div></div><div style="font-size:12.5px;color:#8B98A2;font-weight:600;line-height:1.45">'+self._esc(sub)+'</div>';
+      return h;
+    }
+    function render(){
+      if(modal) modal.close();
+      var spec=steps[step], body=document.createElement("div");
+      body.appendChild(header(spec.sub));
+      var F=self._buildForm(spec.fields());
+      body.appendChild(F.el);
+      var later=document.createElement("button");
+      later.type="button"; later.textContent="Configurer plus tard";
+      later.style.cssText="width:100%;margin-top:2px;padding:11px;border-radius:12px;background:#F4F6F3;color:#5A6B78;font-size:13px;font-weight:700;cursor:pointer;border:1px solid #E1E4DE";
+      later.onclick=function(){ self._onboardingDismissed=true; self._markOnboardingDone(); self._onboardingOpen=false; if(modal) modal.close(); self.showToast("ok","Tu pourras compléter ton coffre depuis les boutons Ajouter."); };
+      body.appendChild(later);
+      if(step>0){
+        var back=document.createElement("button");
+        back.type="button"; back.textContent="Retour";
+        back.style.cssText="width:100%;margin-top:8px;padding:11px;border-radius:12px;background:#fff;color:#1E5081;font-size:13px;font-weight:700;cursor:pointer;border:1px solid #D3E0EE";
+        back.onclick=function(){ step--; render(); };
+        body.appendChild(back);
+      }
+      modal=self._mcModal(spec.title, body, function(){
+        Object.assign(answers, F.values());
+        if(step<steps.length-1){ step++; render(); return "__MC_KEEP_OPEN__"; }
+        var msg=self._applyOnboarding(answers);
+        if(msg) return msg;
+        self._onboardingOpen=false;
+        self._markOnboardingDone();
+        return null;
+      }, step===steps.length-1?"Créer mon coffre":"Continuer");
+    }
+    render();
+  }
+  _applyOnboarding(a){
+    var self=this, cur=this._cur(a.currency||this.state.currency), now=this._todayFull(), month=this._thisMonth();
+    var parse=function(v){ return self.mParse(v, cur); };
+    var bank=parse(a.bank), cash=parse(a.cash), mobile=parse(a.mobile);
+    var salary=parse(a.salary), business=parse(a.business), otherIncome=parse(a.otherIncome);
+    var rent=parse(a.rent), food=parse(a.food), transport=parse(a.transport), bills=parse(a.bills);
+    var emergency=parse(a.emergency), debt=parse(a.debt);
+    var accounts=[];
+    if(bank>0 || (!cash && !mobile)) accounts.push({id:this._uid(),name:"Compte bancaire",type:"Banque",balance_minor:bank,currency:cur,updated:"Aujourd'hui",linked:true,icon:"bank",c:"#1E5081",b:"#EAF1F8"});
+    if(cash>0) accounts.push({id:this._uid(),name:"Espèces",type:"Argent liquide",balance_minor:cash,currency:cur,updated:"Aujourd'hui",linked:true,icon:"cash",c:"#3F9A5A",b:"#E7F3EB"});
+    if(mobile>0) accounts.push({id:this._uid(),name:"Mobile Money",type:"Mobile",balance_minor:mobile,currency:cur,updated:"Aujourd'hui",linked:true,icon:"phone",c:"#B98A2E",b:"#F6EED7"});
+    var mainAcc=accounts[0] ? accounts[0].name : "Compte bancaire";
+    function inc(amount, source, label){ return {id:self._uid(),source:source,label:label,amount_minor:amount,currency:cur,freq:"Mensuel",date:now,month:month,account:mainAcc,note:"Créé pendant l'onboarding"}; }
+    var incomes=[];
+    if(salary>0) incomes.push(inc(salary,"Salaire","Salaire mensuel"));
+    if(business>0) incomes.push(inc(business,"Business","Business / freelance"));
+    if(otherIncome>0) incomes.push(inc(otherIncome,"Autre","Autre revenu"));
+    function exp(amount, cat, payee, method){ return {id:self._uid(),cat:cat,payee:payee,amount_minor:amount,currency:cur,method:method||"Carte",account:mainAcc,date:self._todayShort(),month:month,proof:null,note:"Créé pendant l'onboarding"}; }
+    var expenses=[];
+    if(rent>0) expenses.push(exp(rent,"Logement","Loyer / logement","Virement"));
+    if(food>0) expenses.push(exp(food,"Alimentation","Alimentation","Carte"));
+    if(transport>0) expenses.push(exp(transport,"Transport","Transport","Carte"));
+    if(bills>0) expenses.push(exp(bills,"Factures","Factures / internet / téléphone","Carte"));
+    var savings=[];
+    if(emergency>0) savings.push({id:this._uid(),name:"Fonds d'urgence",target_amount_minor:emergency,current_amount_minor:0,currency:cur,date:"—",status:"En cours",note:"Créé pendant l'onboarding"});
+    var debts=[];
+    if(debt>0) debts.push({id:this._uid(),name:a.debtName||"Dette à suivre",creditor:a.debtName||"Créancier",total_amount_minor:debt,paid_amount_minor:0,currency:cur,due:"—",status:"À jour",note:"Créé pendant l'onboarding"});
+    if(!accounts.length && !incomes.length && !expenses.length && !savings.length && !debts.length) return "Ajoute au moins une information pour créer ton coffre.";
+    this.setState(function(s){
+      return {
+        currency:cur,
+        accounts:accounts.length?accounts:s.accounts,
+        incomes:incomes.concat(s.incomes||[]),
+        expenses:expenses.concat(s.expenses||[]),
+        savings:savings.concat(s.savings||[]),
+        debts:debts.concat(s.debts||[])
+      };
+    }, function(){ self._persist(); self.go("dashboard"); self.showToast("ok","Ton coffre est prêt. Tu peux continuer à l'ajuster."); });
+    return null;
+  }
   setCur(c){ var self=this; this.setState({currency:this._cur(c)}, function(){ self._persist(); }); }
   ping(){ this.showToast("warn","Une dette arrive bientôt à échéance."); }
   showToast(type,msg){
@@ -312,7 +435,7 @@ class Component extends DCLogic {
     return Object.assign({},g,{pctNum:p,pctStr:p+" %",lentStr:this.mFmt(g.amount_lent_minor,cur),repaidStr:this.mFmt(g.amount_repaid_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,this.C.brand),statusSty:this.statusStyle(g.status),initials:g.name.slice(0,1),open:rem>0,onRemind:()=>this.relance(g.name)});
   }
   dExp(e){ const cat=this.CAT[e.cat]||this.CAT["Divers"]; return Object.assign({},e,{amountStr:this.mFmt(e.amount_minor,this._rc(e)),iconStyle:this.iconBox(cat.c,cat.b,40),icon:cat.i,hasProof:!!e.proof,proofLabel:e.proof||""}); }
-  dInc(i){ return Object.assign({},i,{amountStr:this.mFmt(i.amount_minor,this._rc(i))}); }
+  dInc(i){ return Object.assign({},i,{amountStr:this.mFmt(i.amount_minor,this._rc(i)),hasProof:!!i.proof,proofLabel:i.proof||""}); }
   dAcc(a){ return Object.assign({},a,{balStr:this.mFmt(a.balance_minor,this._rc(a)),iconStyle:this.iconBox(a.c,a.b,44),icon:this.ICONS[a.icon],borderStyle:a.linked?"1px solid #E7E9E4":"1.5px dashed #D3D8D1",footNote:a.linked?("Mis à jour · "+a.updated):"Compte non lié",cta:a.linked?"Mettre à jour":"Lier ce compte",onCta:()=>this.openForm("account",{account:a})}); }
 
   renderVals(){
@@ -611,7 +734,7 @@ class Component extends DCLogic {
     var close=function(){ scrim.remove(); };
     x.onclick=close; cancel.onclick=close;
     scrim.onclick=function(e){ if(e.target===scrim) close(); };
-    if(ok){ ok.onclick=function(){ var msg=onSubmit(); if(msg){ err.textContent=msg; } else { close(); } }; }
+    if(ok){ ok.onclick=function(){ var msg=onSubmit(); if(msg==="__MC_KEEP_OPEN__") return; if(msg){ err.textContent=msg; } else { close(); } }; }
     return {scrim:scrim, card:card, close:close, err:err};
   }
 
@@ -727,17 +850,19 @@ class Component extends DCLogic {
         {key:"source",label:"Source",type:"chips",options:["Salaire","Freelance","Business","Cadeau","Remboursement","Autre"],value:"Salaire"},
         {key:"account",label:"Compte à créditer",type:"select",options:this._accOpts()},
         {key:"freq",label:"Fréquence",type:"chips",options:["Mensuel","Ponctuel","Hebdomadaire","Autre"],value:"Mensuel"},
-        {key:"note",label:"Note",type:"text",opt:true}
+        {key:"note",label:"Note",type:"text",opt:true},
+        {key:"proof",label:"Preuve du revenu",type:"file",opt:true}
       ]);
       this._mcModal("Ajouter un revenu", Fi.el, function(){
         var v=Fi.values(), amt=P(v.amount);
         if(amt<=0) return "Indique un montant.";
         if(!v.label) return "Indique un libellé.";
+        var iid=self._uid();
         self.setState(function(s){
-          var inc={id:self._uid(),source:v.source,label:v.label,amount_minor:amt,currency:CUR,freq:v.freq,date:self._todayFull(),month:self._thisMonth(),account:v.account,note:v.note||""};
+          var inc={id:iid,source:v.source,label:v.label,amount_minor:amt,currency:CUR,freq:v.freq,date:self._todayFull(),month:self._thisMonth(),account:v.account,note:v.note||"",proof:!!(v.proof&&v.proof.length)};
           var accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===CUR)?Object.assign({},a,{balance_minor:a.balance_minor+amt,linked:true,updated:"Aujourd'hui"}):a; });
           return {incomes:[inc].concat(s.incomes), accounts:accs};
-        }, function(){ self._persist(); });
+        }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("income:"+iid, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve du revenu jointe."); }); } });
         self.showToast("ok","Revenu enregistré. Le compte a été crédité.");
       }, "Enregistrer le revenu");
     }
@@ -946,15 +1071,29 @@ class Component extends DCLogic {
   _wireRows(){
     try{
       var S=this.state, self=this;
-      var list=S.expenses.filter(function(e){ return (S.fExpMonth==="Tous"||e.month===S.fExpMonth)&&(S.fExpCat==="Toutes"||e.cat===S.fExpCat); });
-      var rows=document.querySelectorAll('div[style*="padding: 14px 15px"]');
+      var isIncome=S.page==="income";
+      var isExpense=S.page==="expenses";
+      if(!isIncome && !isExpense) return;
+      var list=isIncome
+        ? S.incomes.filter(function(i){ return (S.fIncMonth==="Tous"||i.month===S.fIncMonth)&&(S.fIncSource==="Toutes"||i.source===S.fIncSource); })
+        : S.expenses.filter(function(e){ return (S.fExpMonth==="Tous"||e.month===S.fExpMonth)&&(S.fExpCat==="Toutes"||e.cat===S.fExpCat); });
+      var rowSelector=isIncome
+        ? 'div[style*="padding: 15px"][style*="gap: 13px"]'
+        : 'div[style*="padding: 14px 15px"]';
+      var rows=document.querySelectorAll(rowSelector);
       Array.prototype.forEach.call(rows, function(el,i){
-        el.__mcExp=list[i];
+        el.__mcRow=list[i];
+        el.__mcKind=isIncome?"income":"expense";
         if(el.__mcWired) return;
         el.__mcWired=true;
         el.style.cursor="pointer";
         el.title="Voir / ajouter les justificatifs";
-        el.addEventListener("click", function(){ var ex=el.__mcExp; if(ex) self.openAttManager("expense:"+ex.id, "Justificatifs — "+(ex.payee||ex.cat)); });
+        el.addEventListener("click", function(){
+          var row=el.__mcRow, kind=el.__mcKind;
+          if(!row) return;
+          if(kind==="income") self.openAttManager("income:"+row.id, "Justificatifs — "+(row.label||row.source||"Revenu"));
+          else self.openAttManager("expense:"+row.id, "Justificatifs — "+(row.payee||row.cat||"Dépense"));
+        });
       });
     }catch(e){}
   }
@@ -1278,7 +1417,7 @@ class Component extends DCLogic {
       function accName(id){ return id && accById[id] ? accById[id].name : ""; }
       var snapshot={v:2,currency:self.state.currency,
         accounts:accounts,
-        incomes:all[1].map(function(i){ return {id:i.id,source:i.source||"Autre",label:i.category||i.source||"Revenu",amount_minor:i.amount_minor||0,currency:self._cur(i.currency),freq:"Ponctuel",date:self._fullFromIso(i.income_date),month:self._monthFromIso(i.income_date),account:accName(i.account_id),note:i.note||""}; }),
+        incomes:all[1].map(function(i){ return {id:i.id,source:i.source||"Autre",label:i.category||i.source||"Revenu",amount_minor:i.amount_minor||0,currency:self._cur(i.currency),freq:"Ponctuel",date:self._fullFromIso(i.income_date),month:self._monthFromIso(i.income_date),account:accName(i.account_id),proof:null,note:i.note||""}; }),
         expenses:all[2].map(function(e){ return {id:e.id,cat:e.category||"Divers",payee:e.merchant||"Dépense",amount_minor:e.amount_minor||0,currency:self._cur(e.currency),method:e.payment_method||"",account:accName(e.account_id),date:self._shortFromIso(e.expense_date),month:self._monthFromIso(e.expense_date),proof:null,note:e.note||""}; }),
         savings:all[3].map(function(g){ return {id:g.id,name:g.name,target_amount_minor:g.target_amount_minor||0,current_amount_minor:g.current_amount_minor||0,currency:self._cur(g.currency),date:self._fullFromIso(g.target_date),status:g.status||"En cours",note:g.note||""}; }),
         savingsContributions:all[4].map(function(c){ return {id:c.id,savings_goal_id:c.savings_goal_id,account:accName(c.account_id),amount_minor:c.amount_minor||0,currency:self._cur(c.currency),date:self._fullFromIso(c.contribution_date),note:c.note||""}; }),
@@ -1290,11 +1429,15 @@ class Component extends DCLogic {
         loanRepayments:all[10].map(function(r){ return {id:r.id,loan_id:r.loan_id,account:accName(r.account_id),amount_minor:r.amount_minor||0,currency:self._cur(r.currency),date:self._fullFromIso(r.repayment_date),note:r.note||""}; })
       };
       self._cloudApplySnapshot(snapshot);
+      if(self._shouldOfferOnboarding(snapshot)){
+        setTimeout(function(){ self._openOnboarding(); }, 450);
+      }
       return snapshot;
     }).catch(function(e){ self._cloudHandleError("load", e); return null; });
   }
   _cloudParentMeta(parent){
     var p=String(parent||"").split(":");
+    if(p[0]==="income" && p[1]) return {table:"income_attachments",fk:"income_id",id:this._cloudStableId("income",p[1])};
     if(p[0]==="expense" && p[1]) return {table:"expense_attachments",fk:"expense_id",id:this._cloudStableId("expenses",p[1])};
     if(p[0]==="debt" && p[1] && p[2]) return {table:"debt_payment_attachments",fk:"debt_payment_id",id:this._cloudStableId("debtPayments",p[2])};
     if(p[0]==="debt" && p[1]) return {table:"debt_attachments",fk:"debt_id",id:this._cloudStableId("debts",p[1])};

@@ -55,3 +55,11 @@ PRODUCTION_DEPLOY_ENABLED=true
 ```
 
 Without that variable, deployment remains manual.
+
+## Database Changes
+
+Frontend deployments do not automatically alter Supabase production schema.
+
+When a feature adds a table or constraint, first run the matching SQL file from
+`database/migrations/` in Supabase SQL Editor, verify it passes, then deploy the
+frontend.
