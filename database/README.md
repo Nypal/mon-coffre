@@ -1,0 +1,12 @@
+# Database
+
+`supabase_schema.sql` contains the Supabase database schema, constraints, indexes, Row Level Security policies, and private Storage bucket policies.
+
+The schema is designed to protect user data through:
+
+- per-user ownership columns;
+- RLS policies;
+- composite foreign keys containing `user_id`;
+- currency-aware parent-child references;
+- private Storage paths scoped by user id.
+

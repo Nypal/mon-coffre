@@ -1,0 +1,12 @@
+name = "mon-coffre"
+main = "dist/server/index.js"
+compatibility_date = "2026-07-17"
+workers_dev = true
+
+[[routes]]
+pattern = "moncoffre.org"
+custom_domain = true
+
+[[routes]]
+pattern = "www.moncoffre.org"
+custom_domain = true
