@@ -25,6 +25,8 @@ The project demonstrates:
 - Accounts, income, expenses, savings, purchase funds, debts, and loans.
 - Currency-aware financial records.
 - Receipt and document attachment support through a private Storage bucket.
+- Mandatory first-run onboarding for cloud users.
+- Planning modules for lifestyle inflation, debt snowball payoff, sequential goal funding, monthly reviews, planned purchases, and optional real estate projections.
 - Desktop and mobile layouts.
 - Cloud-ready persistence with local fallback architecture.
 
@@ -56,6 +58,7 @@ frontend/
 
 database/
   supabase_schema.sql             Supabase schema, constraints, RLS, Storage policies
+  migrations/                     Production-safe incremental SQL migrations
 
 cloudflare/
   wrangler.toml                   Cloudflare Workers deployment example
@@ -93,6 +96,7 @@ Production uses only a Supabase publishable key in the browser. Data protection 
 - RLS validation: passed
 - Storage policy validation: passed
 - Production auth/cloud smoke tests: passed
+- Mandatory onboarding and planning modules: implemented on feature branch
 - Remaining dashboard advisory: leaked password protection can be enabled from Supabase Auth settings
 
 ## Update Process
