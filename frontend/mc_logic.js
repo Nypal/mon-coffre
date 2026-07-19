@@ -1037,17 +1037,96 @@ class Component extends DCLogic {
       return Promise.resolve(null);
     }
   }
+  _visibleEl(el){
+    try{
+      if(!el || el.disabled) return false;
+      var r=el.getBoundingClientRect();
+      var st=window.getComputedStyle ? window.getComputedStyle(el) : null;
+      return r.width>0 && r.height>0 && (!st || (st.display!=="none" && st.visibility!=="hidden"));
+    }catch(e){ return !!el; }
+  }
+  _setInputValue(el, value){
+    try{
+      var proto=window.HTMLInputElement && window.HTMLInputElement.prototype;
+      var desc=proto ? Object.getOwnPropertyDescriptor(proto,"value") : null;
+      if(desc && desc.set) desc.set.call(el,value);
+      else el.value=value;
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+    }catch(e){ if(el) el.value=value; }
+  }
+  _unlockLoginInput(el, value){
+    try{
+      if(!el || el.__mcCloudUnlocked) return el;
+      var c=el.cloneNode(false);
+      c.removeAttribute("value");
+      c.defaultValue="";
+      c.value=value||"";
+      c.__mcCloudUnlocked=true;
+      el.parentNode.replaceChild(c,el);
+      return c;
+    }catch(e){ return el; }
+  }
   _wireLogin(){
     try{
       if(!this._cloudEnabled()) return;
       var self=this;
-      var inputs=document.querySelectorAll('input[type="email"],input[type="password"]');
+      var inputs=Array.prototype.filter.call(document.querySelectorAll('input[type="email"],input[type="password"]'), function(el){ return self._visibleEl(el); });
       if(inputs.length<2) return;
-      if(inputs.length>=2){
-        if(inputs[0].value==="nypal@moncoffre.app") inputs[0].value="";
-        if(inputs[1].value==="motdepasse") inputs[1].value="";
+      var emailInput=inputs.filter(function(el){ return el.type==="email"; })[0];
+      var passInput=inputs.filter(function(el){ return el.type==="password"; })[0];
+      emailInput=this._unlockLoginInput(emailInput,this._loginEmailValue||"");
+      passInput=this._unlockLoginInput(passInput,this._loginPasswordValue||"");
+      if(emailInput) emailInput.setAttribute("data-mc-login-email","1");
+      if(passInput) passInput.setAttribute("data-mc-login-password","1");
+      if(emailInput && emailInput.value==="nypal@moncoffre.app"){
+        this._setInputValue(emailInput,"");
+        this._loginEmailValue="";
       }
-      var buttons=document.querySelectorAll("button");
+      if(passInput && passInput.value==="motdepasse"){
+        this._setInputValue(passInput,"");
+        this._loginPasswordValue="";
+      }
+      if(emailInput && !emailInput.__mcCloudValueWired){
+        emailInput.__mcCloudValueWired=true;
+        var syncEmail=function(){
+          self._loginEmailValue=emailInput.value.trim();
+          setTimeout(function(){
+            if(emailInput && emailInput.value!==self._loginEmailValue) self._setInputValue(emailInput,self._loginEmailValue||"");
+          },0);
+        };
+        emailInput.addEventListener("input",syncEmail,true);
+        emailInput.addEventListener("change",syncEmail,true);
+      }
+      if(passInput && !passInput.__mcCloudValueWired){
+        passInput.__mcCloudValueWired=true;
+        var syncPass=function(){
+          self._loginPasswordValue=passInput.value;
+          setTimeout(function(){
+            if(passInput && passInput.value!==self._loginPasswordValue) self._setInputValue(passInput,self._loginPasswordValue||"");
+          },0);
+        };
+        passInput.addEventListener("input",syncPass,true);
+        passInput.addEventListener("change",syncPass,true);
+      }
+      if(passInput && passInput.parentElement){
+        var svgs=passInput.parentElement.querySelectorAll("svg");
+        var eye=svgs[svgs.length-1];
+        if(eye && !eye.__mcPwdToggleWired){
+          eye.__mcPwdToggleWired=true;
+          eye.setAttribute("role","button");
+          eye.setAttribute("tabindex","0");
+          eye.setAttribute("aria-label","Afficher le mot de passe");
+          var toggle=function(e){
+            if(e){ e.preventDefault(); e.stopPropagation(); }
+            passInput.type=passInput.type==="password"?"text":"password";
+            eye.setAttribute("aria-label",passInput.type==="password"?"Afficher le mot de passe":"Masquer le mot de passe");
+          };
+          eye.addEventListener("click",toggle,true);
+          eye.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ toggle(e); } },true);
+        }
+      }
+      var buttons=Array.prototype.filter.call(document.querySelectorAll("button"), function(el){ return self._visibleEl(el); });
       Array.prototype.forEach.call(buttons,function(btn){
         var t=(btn.textContent||"").trim();
         var tl=t.toLowerCase();
@@ -1065,34 +1144,68 @@ class Component extends DCLogic {
           }
           self._cloudLogin(isSignup?"signup":"signin");
         };
-        btn.onclick=handler;
         btn.addEventListener("click",handler,true);
       });
     }catch(e){}
   }
   _loginFields(){
-    var email=document.querySelector('input[type="email"]');
-    var pass=document.querySelector('input[type="password"]');
-    return {email:email?email.value.trim():"", password:pass?pass.value:""};
+    var self=this;
+    var email=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-email="1"],input[type="email"]'), function(el){ return self._visibleEl(el); })[0];
+    var pass=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-password="1"],input[type="password"]'), function(el){ return self._visibleEl(el); })[0];
+    var emailValue=(this._loginEmailValue!=null) ? this._loginEmailValue : (email?email.value.trim():"");
+    var passValue=(this._loginPasswordValue!=null) ? this._loginPasswordValue : (pass?pass.value:"");
+    if(emailValue==="nypal@moncoffre.app") emailValue="";
+    if(passValue==="motdepasse") passValue="";
+    return {email:emailValue, password:passValue};
+  }
+  _cloudFriendlyError(err){
+    var msg=(err && err.message) ? String(err.message) : "Connexion cloud impossible.";
+    var code=(err && (err.code||err.error_code)) ? String(err.code||err.error_code) : "";
+    var raw=(code+" "+msg).toLowerCase();
+    if(raw.indexOf("email not confirmed")>=0 || raw.indexOf("email_not_confirmed")>=0){
+      return "Ton email n'est pas encore confirmé. Ouvre l'email Supabase, confirme le compte, puis reviens te connecter.";
+    }
+    if(raw.indexOf("invalid_credentials")>=0 || raw.indexOf("invalid login credentials")>=0){
+      return "Email ou mot de passe incorrect. Si tu viens de créer le compte, confirme d'abord ton email.";
+    }
+    if(raw.indexOf("unable to validate email")>=0 || raw.indexOf("validation_failed")>=0){
+      return "Adresse e-mail invalide. Vérifie l'adresse puis réessaie.";
+    }
+    if(raw.indexOf("email address")>=0 && raw.indexOf("invalid")>=0){
+      return "Adresse e-mail invalide. Vérifie l'adresse puis réessaie.";
+    }
+    if(raw.indexOf("rate limit")>=0 || raw.indexOf("too many")>=0){
+      return "Trop d'essais en peu de temps. Attends quelques minutes puis réessaie.";
+    }
+    return msg;
   }
   _cloudLogin(mode){
     var self=this;
     if(!this._cloudEnabled()){ this.go("dashboard"); return; }
+    if(this._cloudLoginBusy) return;
+    this._cloudLoginBusy=true;
     this._cloudEnsureClient().then(function(client){
       if(!client || !client.auth) throw new Error("Client Supabase non pret");
       var f=self._loginFields();
       if(!f.email || !f.password){ self.showToast("warn","Email et mot de passe requis."); return null; }
-      var req=(mode==="signup") ? client.auth.signUp({email:f.email,password:f.password}) : client.auth.signInWithPassword({email:f.email,password:f.password});
+      var credentials={email:f.email,password:f.password};
+      if(mode==="signup"){
+        credentials.options={emailRedirectTo:window.location.origin};
+      }
+      var req=(mode==="signup") ? client.auth.signUp(credentials) : client.auth.signInWithPassword(credentials);
       return req.then(function(r){
         if(r.error) throw r.error;
         var session=r.data && r.data.session ? r.data.session : null;
         if(session) return self._cloudApplySession(session);
-        self.showToast("ok","Compte cree. Verifie ton email si Supabase demande confirmation.");
+        self.showToast("ok","Compte créé. Ouvre l'email de confirmation puis reviens te connecter.");
         return null;
       });
+    }).then(function(){
+      self._cloudLoginBusy=false;
     }).catch(function(e){
       self._cloudHandleError("login", e);
-      self.showToast("warn", e && e.message ? e.message : "Connexion cloud impossible.");
+      self.showToast("warn", self._cloudFriendlyError(e));
+      self._cloudLoginBusy=false;
     });
   }
   _cloudPersistSnapshot(snapshot){
