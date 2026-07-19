@@ -9,6 +9,7 @@ This repository is the source of truth for Mon Coffre updates.
 - Prevent secrets from entering the repository.
 - Rebuild the app from source before deployment.
 - Deploy to Cloudflare only after safety checks pass.
+- Keep browser hardening and SDK pinning enforced by CI.
 
 ## Standard Flow
 
@@ -62,7 +63,8 @@ The `Safety Checks` workflow verifies:
 - Python syntax;
 - rebuild from `frontend/build_mc.py`;
 - generated bundle sanity;
-- Cloudflare Worker package generation.
+- Cloudflare Worker package generation;
+- production security hardening checks.
 
 ## Production Deployment
 
@@ -74,7 +76,8 @@ The deployment workflow:
 4. patches `MC_CLOUD` inside the GitHub Actions workspace only;
 5. rebuilds the application bundle;
 6. packages the Cloudflare Worker;
-7. deploys through Wrangler.
+7. verifies production security hardening;
+8. deploys through Wrangler.
 
 The production Supabase URL and publishable key are injected only during CI. They are not committed.
 
@@ -84,6 +87,17 @@ Configure GitHub so that:
 
 - `main` requires pull requests;
 - `Safety Checks` must pass before merge;
+- at least one approval is required before merging to `main`;
 - force pushes to `main` are blocked;
 - deletion of `main` is blocked;
 - the `production` environment requires manual approval before deployment.
+
+## Dashboard Follow-Up
+
+After code changes are merged, confirm these provider settings manually:
+
+- Supabase Auth leaked password protection is enabled;
+- GitHub `main` branch protection requires review and passing checks;
+- GitHub `production` environment has required reviewers;
+- Cloudflare serves the site only through `moncoffre.org` and
+  `www.moncoffre.org`.

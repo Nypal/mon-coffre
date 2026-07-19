@@ -67,6 +67,9 @@ jobs:
       - name: Build Cloudflare Worker package
         run: python scripts/build_cloudflare_worker.py
 
+      - name: Verify production security hardening
+        run: python scripts/test_security_hardening.py
+
       - name: Deploy Worker
         working-directory: cloudflare
         run: npx --yes wrangler@4.111.0 deploy

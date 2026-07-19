@@ -14,6 +14,8 @@ class Component extends DCLogic {
 
   /* ---------- Supabase configuration, disabled by default ---------- */
   MC_CLOUD = { enabled:false, url:"https://your-project.supabase.co", anonKey:"sb_publishable_your_public_key" };
+  SUPABASE_SDK_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/dist/umd/supabase.min.js";
+  SUPABASE_SDK_INTEGRITY = "sha384-BmlQlKlDvXvKoxkn5OQuUo/aJQCTXeB+Kls6EccBmG4Kf8AXvp89RtO9MtPxP/r5";
 
   /* ---------- Storage keys ---------- */
   _KEY    = "moncoffre.local.v2";
@@ -453,6 +455,13 @@ class Component extends DCLogic {
     return snapshot;
   }
   _esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  _safeImageUrl(url){
+    var s=String(url||"").trim();
+    if(!s) return "";
+    if(/^https:\/\//i.test(s)) return s;
+    if(/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(s)) return s;
+    return "";
+  }
   _todayShort(){ var d=new Date(); return d.getDate()+" "+this._moisFr[d.getMonth()]; }
   _todayFull(){ var d=new Date(); return d.getDate()+" "+this._moisFr[d.getMonth()]+" "+d.getFullYear(); }
   _thisMonth(){ return this._moisLong[new Date().getMonth()]; }
@@ -1286,7 +1295,7 @@ class Component extends DCLogic {
       var a=self._parts(line), schedule=a[2]||"", weekly=0, monthly=0, date=schedule||"—", targetIso=self._isoDateMaybe(schedule);
       if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyInput(schedule,cur); date="—"; targetIso=null; }
       if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyInput(schedule,cur); weekly=Math.round(monthly/4.345); date="—"; targetIso=null; }
-      return {id:mkId(),name:a[0]||"Achat planifié",target_amount_minor:self._moneyInput(a[1],cur),current_amount_minor:0,currency:cur,date:date,target_iso:targetIso,priority:a[3]||"Moyenne",status:"En cours",goal_type:"planned_purchase",planned:true,weekly_minor:weekly,image_url:a[4]||""};
+      return {id:mkId(),name:a[0]||"Achat planifié",target_amount_minor:self._moneyInput(a[1],cur),current_amount_minor:0,currency:cur,date:date,target_iso:targetIso,priority:a[3]||"Moyenne",status:"En cours",goal_type:"planned_purchase",planned:true,weekly_minor:weekly,image_url:self._safeImageUrl(a[4])};
     });
     if(accounts.length) patch.accounts=accounts;
     if(incomes.length) patch.incomes=incomes;
@@ -1309,7 +1318,8 @@ class Component extends DCLogic {
     var body=document.createElement("div");
     var snowRows=snow.map((x)=>'<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:12px"><div><b>'+this._esc(x.name)+'</b><div style="font-size:12px;color:#8B98A2">'+this._esc("Reste "+this.mFmt(x.remain,this.state.currency))+'</div></div><div style="text-align:right;font-size:12.5px;color:#5A6B78">'+this._esc(this.mFmt(x.monthly,this.state.currency)+"/mois")+"<br>"+this._esc(x.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}))+'</div></div>');
     var plannedRows=planned.map((x)=>{
-      var img=x.goal.image_url?'<img src="'+this._esc(x.goal.image_url)+'" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid #E1E4DE">':"";
+      var safeImg=this._safeImageUrl(x.goal.image_url);
+      var img=safeImg?'<img src="'+this._esc(safeImg)+'" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid #E1E4DE">':"";
       return '<div style="padding:12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:13px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;gap:10px;align-items:center">'+img+'<b>'+this._esc(x.goal.name)+'</b></div><span style="font-size:12px;color:#5A6B78">'+this._esc(this.mFmt(x.goal.current_amount_minor,this.state.currency)+" / "+this.mFmt(x.goal.target_amount_minor,this.state.currency))+'</span></div><div style="height:8px;background:#E7E9E4;border-radius:999px;margin:9px 0"><div style="height:100%;width:'+this.pct(x.goal.current_amount_minor,x.goal.target_amount_minor)+'%;background:#3F9A5A;border-radius:999px"></div></div><div style="font-size:12.5px;color:#5A6B78">'+this._esc(x.weekly?("Pour le financer : "+this.mFmt(x.weekly,this.state.currency)+"/semaine"):"Ajoute une date cible ou une contribution.")+'</div><div style="font-size:12.5px;color:#5A6B78;margin-top:3px">'+this._esc("Anti-Klarna : tu peux économiser environ "+this.mFmt(x.savedLow,this.state.currency)+" à "+this.mFmt(x.savedHigh,this.state.currency)+" en payant cash.")+'</div></div>';
     });
     var incomeRows=Object.keys(rev.bySource).map((k)=>'<div style="display:flex;justify-content:space-between"><span>'+this._esc(k)+'</span><b>'+this._esc(this.mFmt(rev.bySource[k],this.state.currency))+'</b></div>');
@@ -1351,7 +1361,10 @@ class Component extends DCLogic {
     if(this._cloudSdkPromise) return this._cloudSdkPromise;
     this._cloudSdkPromise=new Promise(function(resolve,reject){
       var s=document.createElement("script");
-      s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+      s.src=self.SUPABASE_SDK_URL;
+      s.integrity=self.SUPABASE_SDK_INTEGRITY;
+      s.crossOrigin="anonymous";
+      s.referrerPolicy="no-referrer";
       s.async=true;
       s.onload=function(){ resolve(window.supabase); };
       s.onerror=function(){ reject(new Error("SDK Supabase indisponible")); };
@@ -1712,7 +1725,7 @@ class Component extends DCLogic {
       var a=self._parts(line), name=(a[0]||"").toLowerCase(), schedule=a[2]||"", weekly=0, monthly=0, targetIso=self._isoDateMaybe(schedule), cur=(plan.profile&&plan.profile.main_currency)||self.state.currency;
       if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyInput(schedule,cur); targetIso=null; }
       if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyInput(schedule,cur); weekly=Math.round(monthly/4.345); targetIso=null; }
-      if(name) map[name]={goal_type:"planned_purchase",planned:true,weekly_minor:weekly,target_iso:targetIso,image_url:a[4]||""};
+      if(name) map[name]={goal_type:"planned_purchase",planned:true,weekly_minor:weekly,target_iso:targetIso,image_url:self._safeImageUrl(a[4])};
     });
     return map;
   }
@@ -1741,7 +1754,7 @@ class Component extends DCLogic {
     });
     (snapshot.pots||[]).forEach(function(g){
       var cur=self._rc(g), id=self._cloudStableId("pots", g.id||g.name);
-      rows.purchase_goals.push({id:id,user_id:uid,item_name:g.name||"Cagnotte",description:g.description||"",target_amount_minor:Math.trunc(Number(g.target_amount_minor)||0),current_amount_minor:Math.trunc(Number(g.current_amount_minor)||0),currency:cur,target_date:self._isoDateMaybe(g.target_iso||g.date),priority:g.priority||"Moyenne",status:g.status||"En cours",image_url:g.image_url||"",note:g.note||""});
+      rows.purchase_goals.push({id:id,user_id:uid,item_name:g.name||"Cagnotte",description:g.description||"",target_amount_minor:Math.trunc(Number(g.target_amount_minor)||0),current_amount_minor:Math.trunc(Number(g.current_amount_minor)||0),currency:cur,target_date:self._isoDateMaybe(g.target_iso||g.date),priority:g.priority||"Moyenne",status:g.status||"En cours",image_url:self._safeImageUrl(g.image_url),note:g.note||""});
     });
     (snapshot.purchaseContributions||[]).forEach(function(c){
       var cur=self._cur(c.currency), id=self._cloudStableId("purchaseContributions", c.id);
@@ -1815,7 +1828,7 @@ class Component extends DCLogic {
         expenses:all[2].map(function(e){ return {id:e.id,cat:e.category||"Divers",payee:e.merchant||"Dépense",amount_minor:e.amount_minor||0,currency:self._cur(e.currency),method:e.payment_method||"",account:accName(e.account_id),date:self._shortFromIso(e.expense_date),month:self._monthFromIso(e.expense_date),proof:null,note:e.note||""}; }),
         savings:all[3].map(function(g){ return {id:g.id,name:g.name,target_amount_minor:g.target_amount_minor||0,current_amount_minor:g.current_amount_minor||0,currency:self._cur(g.currency),date:self._fullFromIso(g.target_date),status:g.status||"En cours",note:g.note||""}; }),
         savingsContributions:all[4].map(function(c){ return {id:c.id,savings_goal_id:c.savings_goal_id,account:accName(c.account_id),amount_minor:c.amount_minor||0,currency:self._cur(c.currency),date:self._fullFromIso(c.contribution_date),note:c.note||""}; }),
-        pots:all[5].map(function(g){ var m=purchaseMeta[String(g.item_name||"").toLowerCase()]||{}; return {id:g.id,name:g.item_name,target_amount_minor:g.target_amount_minor||0,current_amount_minor:g.current_amount_minor||0,currency:self._cur(g.currency),date:self._fullFromIso(g.target_date),target_iso:m.target_iso||g.target_date||null,priority:g.priority||"Moyenne",status:g.status||"En cours",note:g.note||"",goal_type:m.goal_type||"",planned:!!m.planned,weekly_minor:m.weekly_minor||0,image_url:g.image_url||m.image_url||""}; }),
+        pots:all[5].map(function(g){ var m=purchaseMeta[String(g.item_name||"").toLowerCase()]||{}; return {id:g.id,name:g.item_name,target_amount_minor:g.target_amount_minor||0,current_amount_minor:g.current_amount_minor||0,currency:self._cur(g.currency),date:self._fullFromIso(g.target_date),target_iso:m.target_iso||g.target_date||null,priority:g.priority||"Moyenne",status:g.status||"En cours",note:g.note||"",goal_type:m.goal_type||"",planned:!!m.planned,weekly_minor:m.weekly_minor||0,image_url:self._safeImageUrl(g.image_url||m.image_url)}; }),
         purchaseContributions:all[6].map(function(c){ return {id:c.id,purchase_goal_id:c.purchase_goal_id,account:accName(c.account_id),amount_minor:c.amount_minor||0,currency:self._cur(c.currency),date:self._fullFromIso(c.contribution_date),note:c.note||""}; }),
         debts:all[7].map(function(d){ var m=debtMeta[String(d.debt_name||"").toLowerCase()]||{}; return {id:d.id,name:d.debt_name||"Dette",creditor:d.creditor_name||"",total_amount_minor:d.total_amount_minor||0,paid_amount_minor:d.paid_amount_minor||0,currency:self._cur(d.currency),due:self._fullFromIso(d.next_payment_date),status:d.status||"A jour",note:d.note||"",minimum_minor:m.minimum_minor||0,apr_bps:m.apr_bps||0}; }),
         debtPayments:all[8].map(function(p){ return {id:p.id,debt_id:p.debt_id,account:accName(p.account_id),amount_minor:p.amount_minor||0,currency:self._cur(p.currency),date:self._fullFromIso(p.payment_date),note:p.note||""}; }),
