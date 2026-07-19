@@ -210,9 +210,18 @@ class Component extends DCLogic {
   ping(){ this.showToast("warn","Une dette arrive bientôt à échéance."); }
   showToast(type,msg){
     this.setState({toast:{type,msg}});
-    if(this.state && this.state.page==="login") this._loginToast(type,msg);
+    if(this._isLoginVisible()) this._loginToast(type,msg);
     clearTimeout(this._t);
     this._t=setTimeout(()=>{ this.setState({toast:null}); this._loginToast(null); },2600);
+  }
+  _isLoginVisible(){
+    try{
+      if(this.state && this.state.page==="login") return true;
+      if(!this._cloudEnabled()) return false;
+      var email=document.querySelector('input[data-mc-login-email="1"],input[type="email"]');
+      var pass=document.querySelector('input[data-mc-login-password="1"],input[type="password"],input[type="text"]');
+      return !!(email && pass && document.body && document.body.innerText.indexOf("Bon retour")>=0);
+    }catch(e){ return false; }
   }
   _loginToast(type,msg){
     try{
