@@ -1957,3 +1957,7 @@ class Component extends DCLogic {
     return { passed:pass, failed:fail, total:pass+fail, results:results.filter(r=>!r.ok).length?results.filter(r=>!r.ok):results };
   }
 }
+
+if(typeof module!=="undefined" && module.exports){
+  module.exports={Component};
+}

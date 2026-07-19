@@ -1,56 +1,44 @@
 #!/usr/bin/env node
-const fs = require("fs");
-const vm = require("vm");
+const { join } = require("node:path");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const source = fs
-  .readFileSync("frontend/mc_logic.js", "utf8")
-  .replace(
-    /class Component extends DCLogic/,
-    "globalThis.Component = class Component extends DCLogic"
-  );
-
-const sandbox = {
-  console,
-  window: {},
-  document: {},
-  localStorage: {
-    getItem() {
-      return null;
-    },
-    setItem() {},
+global.window = {};
+global.document = {};
+global.localStorage = {
+  getItem() {
+    return null;
   },
-  indexedDB: {
-    open() {
-      return {};
-    },
-  },
-  crypto: {
-    randomUUID() {
-      return "00000000-0000-4000-8000-000000000001";
-    },
-  },
-  DCLogic: class {
-    constructor() {
-      this.props = { mode: "desktop" };
-      this.state = {};
-    }
-    setState(patch, cb) {
-      const next =
-        typeof patch === "function" ? patch(this.state, this.props) : patch;
-      this.state = Object.assign({}, this.state, next || {});
-      if (cb) cb();
-    }
+  setItem() {},
+};
+global.indexedDB = {
+  open() {
+    return {};
   },
 };
+global.crypto = {
+  randomUUID() {
+    return "00000000-0000-4000-8000-000000000001";
+  },
+};
+global.DCLogic = class {
+  constructor() {
+    this.props = { mode: "desktop" };
+    this.state = {};
+  }
+  setState(patch, cb) {
+    const next =
+      typeof patch === "function" ? patch(this.state, this.props) : patch;
+    this.state = { ...this.state, ...(next || {}) };
+    if (cb) cb();
+  }
+};
 
-vm.createContext(sandbox);
-vm.runInContext(source, sandbox);
+const { Component } = require(join(__dirname, "..", "frontend", "mc_logic.js"));
 
-const app = new sandbox.Component();
+const app = new Component();
 app.props = { mode: "desktop" };
 
 const money = app._moneyTests();
