@@ -12,6 +12,10 @@ The project must never expose:
 - personal access tokens;
 - user passwords.
 
+The Supabase browser SDK is loaded from an exact pinned version and protected
+with Subresource Integrity. Do not replace the pinned URL with a floating
+`@2` CDN URL.
+
 ## Row Level Security
 
 All user-owned tables have RLS enabled. Policies restrict authenticated users to their own rows.
@@ -52,3 +56,31 @@ Storage policies verify both:
 - `bucket_id = 'justificatifs'`;
 - the first path segment matches the authenticated user.
 
+## Browser Hardening
+
+The Cloudflare Worker adds production security headers for every app response:
+
+- Content Security Policy with `frame-ancestors 'none'`;
+- HSTS with `includeSubDomains` and `preload`;
+- `X-Frame-Options: DENY`;
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: no-referrer`;
+- restrictive Permissions Policy.
+
+The CSP still allows inline scripts and styles because the locked application
+bundle is a compiled single-file app. Removing that requirement would need a
+larger frontend rebuild, not a small security patch.
+
+## User-Supplied Media
+
+Planned-purchase images are filtered before rendering. The app accepts only
+HTTPS image URLs and base64 PNG/JPEG/WEBP data URLs, and renders them with
+`referrerpolicy="no-referrer"`.
+
+## Dashboard Controls
+
+Two security controls live outside this repository and must be kept enabled in
+the provider dashboards:
+
+- Supabase leaked password protection for production Auth;
+- GitHub branch protection and production environment reviewers.

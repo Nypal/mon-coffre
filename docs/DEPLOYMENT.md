@@ -33,6 +33,9 @@ The original locked design source should remain unchanged.
 
 `cloudflare/wrangler.toml` shows the Worker deployment configuration. The generated production bundle is intentionally not committed here.
 
+The production Worker is route-only. `workers.dev` is disabled so the app is
+served through the owned domains instead of an extra public Worker subdomain.
+
 ## GitHub Actions
 
 Production deployment is handled by `.github/workflows/deploy-cloudflare.yml`.
@@ -47,6 +50,10 @@ CLOUDFLARE_ACCOUNT_ID
 ```
 
 The workflow patches `MC_CLOUD` only inside the CI workspace, rebuilds the app, packages the Worker, and deploys with Wrangler.
+
+The deployment workflow also verifies production hardening after packaging the
+Worker. A deployment must fail if security headers, SDK pinning, or
+`workers.dev` protection are removed.
 
 Automatic deployment from `main` requires:
 
