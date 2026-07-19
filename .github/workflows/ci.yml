@@ -39,6 +39,9 @@ jobs:
       - name: Check JavaScript syntax
         run: node --check frontend/mc_logic.js
 
+      - name: Test financial planning modules
+        run: node scripts/test_financial_planning.js
+
       - name: Check Python syntax
         run: python -m py_compile frontend/build_mc.py scripts/*.py
 

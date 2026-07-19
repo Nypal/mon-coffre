@@ -29,6 +29,16 @@ create table if not exists public.users (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Mandatory onboarding / financial planning profile ----------
+create table if not exists public.user_financial_plans (
+  user_id                 uuid primary key references auth.users(id) on delete cascade,
+  onboarding_completed    boolean not null default false,
+  onboarding_completed_at timestamptz,
+  plan                    jsonb not null default '{}'::jsonb,
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now()
+);
+
 -- ---------- Accounts / available money ----------
 create table if not exists public.accounts (
   id            uuid primary key default gen_random_uuid(),
@@ -56,9 +66,27 @@ create table if not exists public.income (
   income_date    date,
   note           text,
   created_at     timestamptz not null default now(),
+  constraint income_id_user_unique unique (id, user_id),
   constraint income_account_owner_currency_fk
     foreign key (account_id, user_id, currency)
     references public.accounts (id, user_id, currency)
+);
+
+-- ---------- Income attachments ----------
+create table if not exists public.income_attachments (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  income_id   uuid not null,
+  file_path   text not null,
+  file_name   text,
+  file_type   text,
+  file_size   bigint check (file_size is null or file_size >= 0),
+  created_at  timestamptz not null default now(),
+  constraint income_attachments_path_owner check (file_path like user_id::text || '/%'),
+  constraint income_attachments_parent_fk
+    foreign key (income_id, user_id)
+    references public.income (id, user_id)
+    on delete cascade
 );
 
 -- ---------- Expenses ----------
@@ -331,8 +359,10 @@ create table if not exists public.loan_repayment_attachments (
 drop function if exists public.rls_auto_enable();
 
 alter table public.users                       enable row level security;
+alter table public.user_financial_plans        enable row level security;
 alter table public.accounts                    enable row level security;
 alter table public.income                      enable row level security;
+alter table public.income_attachments          enable row level security;
 alter table public.expenses                    enable row level security;
 alter table public.expense_attachments         enable row level security;
 alter table public.savings_goals               enable row level security;
@@ -365,7 +395,8 @@ do $$
 declare t text;
 begin
   foreach t in array array[
-    'accounts','income','expenses','expense_attachments',
+    'user_financial_plans',
+    'accounts','income','income_attachments','expenses','expense_attachments',
     'savings_goals','savings_contributions',
     'purchase_goals','purchase_contributions',
     'debts','debt_payments','debt_attachments','debt_payment_attachments',
@@ -390,6 +421,11 @@ create index if not exists idx_income_user on public.income(user_id);
 create index if not exists idx_income_account on public.income(account_id);
 create index if not exists idx_income_user_date on public.income(user_id, income_date desc);
 create index if not exists idx_income_user_currency on public.income(user_id, currency);
+create index if not exists idx_income_attachments_user on public.income_attachments(user_id);
+create index if not exists idx_income_attachments_income on public.income_attachments(income_id);
+
+create index if not exists idx_user_financial_plans_user on public.user_financial_plans(user_id);
+create index if not exists idx_user_financial_plans_updated on public.user_financial_plans(user_id, updated_at desc);
 
 create index if not exists idx_expenses_user on public.expenses(user_id);
 create index if not exists idx_expenses_account on public.expenses(account_id);
@@ -433,6 +469,34 @@ create index if not exists idx_loan_attachments_user on public.loan_attachments(
 create index if not exists idx_loan_attachments_loan on public.loan_attachments(loan_id);
 create index if not exists idx_loan_repayment_attachments_user on public.loan_repayment_attachments(user_id);
 create index if not exists idx_loan_repayment_attachments_repayment on public.loan_repayment_attachments(loan_repayment_id);
+
+-- =====================================================================
+-- DATA API GRANTS: table access is granted only to signed-in users.
+-- RLS remains the authorization boundary for individual rows.
+-- =====================================================================
+grant usage on schema public to authenticated;
+grant select on public.currencies to authenticated;
+grant select, insert, update, delete on
+  public.users,
+  public.user_financial_plans,
+  public.accounts,
+  public.income,
+  public.income_attachments,
+  public.expenses,
+  public.expense_attachments,
+  public.savings_goals,
+  public.savings_contributions,
+  public.purchase_goals,
+  public.purchase_contributions,
+  public.debts,
+  public.debt_payments,
+  public.debt_attachments,
+  public.debt_payment_attachments,
+  public.loans_given,
+  public.loan_repayments,
+  public.loan_attachments,
+  public.loan_repayment_attachments
+to authenticated;
 
 -- =====================================================================
 -- STORAGE: private bucket for attachments (photos, screenshots, PDFs)
