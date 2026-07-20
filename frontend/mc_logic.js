@@ -404,9 +404,9 @@ class Component extends DCLogic {
     return Object.assign({},g,{pctNum:p,pctStr:p+" %",savedStr:this.mFmt(g.current_amount_minor,cur),priceStr:this.mFmt(g.target_amount_minor,cur),remainStr:this.mFmt(Math.max(0,g.target_amount_minor-g.current_amount_minor),cur),done:done,barStyle:this.bar(p,done?this.C.green:this.C.brand),statusSty:this.statusStyle(g.status),prioSty:this.prioStyle(g.priority),msg: done?"Objectif atteint. Tu peux acheter cet objet sans toucher à ton budget principal.":"Achat non recommandé pour le moment.",msgSty: Object.assign({display:"flex",alignItems:"flex-start",gap:"9px",borderRadius:"13px",padding:"12px 13px",fontSize:"12.5px",fontWeight:600,lineHeight:"1.4"}, done?{color:"#2C6B41",background:"#E7F3EB",border:"1px solid #CBE6D3"}:{color:"#8A6417",background:"#F8F1DC",border:"1px solid #EBDCAF"}),onCotiser:()=>this.cotiser(g.name)});
   }
   dDebt(g, decision){
-    const cur=this._rc(g), p=this.pct(g.paid_amount_minor,g.total_amount_minor), rem=Math.max(0,g.total_amount_minor-g.paid_amount_minor);
+    const cur=this._rc(g), total=Math.max(0,Math.trunc(Number(g.total_amount_minor)||0)), paid=this._debtPaidMinor(total,g.paid_amount_minor), p=this.pct(paid,total), rem=Math.max(0,total-paid);
     const detail=decision && decision.byId ? decision.byId[g.id] : null;
-    return Object.assign({},g,{pctNum:p,pctStr:p+" %",paidStr:this.mFmt(g.paid_amount_minor,cur),totalStr:this.mFmt(g.total_amount_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,g.status==="En retard"?"#C99A38":this.C.green),statusSty:this.statusStyle(g.status),late:g.status==="En retard",open:rem>0,decisionRank:detail?detail.rank:null,decisionPayStr:detail?this.mFmt(detail.monthly,cur):"",decisionDoneStr:detail&&detail.done?detail.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}):"Budget à définir",decisionBadge:detail&&detail.rank===1?"Priorité maintenant":(detail?"Ensuite":""),onPay:()=>this.rembourserDette(g.name)});
+    return Object.assign({},g,{pctNum:p,pctStr:p+" %",paidStr:this.mFmt(paid,cur),totalStr:this.mFmt(total,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,g.status==="En retard"?"#C99A38":this.C.green),statusSty:this.statusStyle(g.status),late:g.status==="En retard",open:rem>0,decisionRank:detail?detail.rank:null,decisionPayStr:detail?this.mFmt(detail.monthly,cur):"",decisionDoneStr:detail&&detail.done?detail.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}):"Budget à définir",decisionBadge:detail&&detail.rank===1?"Priorité maintenant":(detail?"Ensuite":""),onPay:()=>this.rembourserDette(g.name)});
   }
   dLoan(g){
     const cur=this._rc(g), p=this.pct(g.amount_repaid_minor,g.amount_lent_minor), rem=Math.max(0,g.amount_lent_minor-g.amount_repaid_minor);
@@ -1003,7 +1003,12 @@ class Component extends DCLogic {
     return {baseline:base,current:cur,pct:pct,alert:base>0 && pct>=Math.trunc(Number(p.lifestyle.threshold_pct)||15)};
   }
   _debtRemaining(d){
-    return Math.max(0, Math.trunc(Number(d.total_amount_minor)||0)-Math.trunc(Number(d.paid_amount_minor)||0));
+    const total=Math.max(0,Math.trunc(Number(d.total_amount_minor)||0));
+    return Math.max(0,total-this._debtPaidMinor(total,d.paid_amount_minor));
+  }
+  _debtPaidMinor(total, paid){
+    const safeTotal=Math.max(0,Math.trunc(Number(total)||0));
+    return Math.max(0,Math.min(safeTotal,Math.trunc(Number(paid)||0)));
   }
   _debtDueTime(d){
     const iso=this._isoDateMaybe(d && d.due);
@@ -1444,7 +1449,7 @@ class Component extends DCLogic {
         {key:"name",label:"Nom de la dette",type:"text",required:true,placeholder:"Ex : Dette voiture"},
         {key:"creditor",label:"Créancier",type:"text",required:true,placeholder:"À qui dois-tu cet argent ?"},
         {key:"total",label:"Montant total",type:"amount",required:true},
-        {key:"paid",label:"Déjà payé",type:"number",value:"0"},
+        {key:"paid",label:"Déjà payé",type:"amount",value:"0"},
         {key:"minimum",label:"Minimum mensuel",type:"amount",required:true},
         {key:"apr",label:"Taux si tu le connais (%)",type:"number",opt:true,value:"0"},
         {key:"due",label:"Prochaine échéance",type:"text",opt:true,placeholder:"Ex : 15 août 2026"}
@@ -1452,7 +1457,7 @@ class Component extends DCLogic {
       this._mcModal("Ajouter une dette", Fd.el, function(){
         var v=Fd.values(); if(!v.name) return "Indique un nom."; if(!v.creditor) return "Indique le créancier.";
         var tot=P(v.total); if(tot<=0) return "Indique le montant total.";
-        var pd=P(v.paid);
+        var pd=self._debtPaidMinor(tot,P(v.paid));
         var min=P(v.minimum); if(min<=0) return "Indique le minimum mensuel.";
         var apr=Math.max(0,Math.round(self._numInput(v.apr)*100)||0);
         self.setState(function(s){
@@ -1650,7 +1655,7 @@ class Component extends DCLogic {
       var debtPlan=this._debtDecisionPlan();
       var matches=Array.prototype.slice.call(document.querySelectorAll("div")).filter(function(el){
         var txt=String(el.textContent||"");
-        return txt.includes("Total à rembourser") && txt.includes("Rien d'alarmant");
+        return el.id!=="mc-debt-decision-inline" && txt.includes("Total à rembourser");
       }).sort(function(a,b){ return String(a.textContent||"").length-String(b.textContent||"").length; });
       var totalCard=matches[0];
       var host=totalCard&&totalCard.parentElement;

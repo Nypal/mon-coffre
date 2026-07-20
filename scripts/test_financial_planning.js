@@ -166,6 +166,9 @@ app.state.debts = [
 debtDecision = app._debtDecisionPlan();
 assert(debtDecision.strategy === "urgent", "overdue debt must take priority over APR optimization");
 assert(debtDecision.targetName === "Late card", "urgent decision must target the overdue debt first");
+assert(app._debtPaidMinor(50000, 90000) === 50000, "debt paid amount must be capped at total");
+assert(app._debtPaidMinor(50000, -2000) === 0, "debt paid amount must not go below zero");
+assert(app.dDebt({ total_amount_minor: 50000, paid_amount_minor: 90000, currency: "USD" }).remainStr === app.mFmt(0, "USD"), "debt card must display capped remaining balance");
 
 const planWithDebtMeta = app._planWithDebtMeta(app._mergePlan({ onboarding: { completed: true } }), {
   name: "New card",
@@ -181,8 +184,16 @@ assert(
   "debts page must expose the decision aid inline"
 );
 assert(
+  !app._wireDebtDecisionUi.toString().includes("Rien d'alarmant"),
+  "debts page decision aid insertion must not depend on fragile helper copy"
+);
+assert(
   app._openPlanPanel.toString().includes("Plan d’attaque dettes"),
   "financial plan panel must show the debt attack plan"
+);
+assert(
+  app.openForm.toString().includes('{key:"paid",label:"Déjà payé",type:"amount"'),
+  "debt paid field must accept money formatting"
 );
 
 app.state.savings = [
