@@ -147,6 +147,72 @@ assert(realEstate.maxPayment > 0, "real estate projection must calculate a housi
 assert(realEstate.downPayment === 420000, "real estate projection must reuse linked down payment goal");
 assert(realEstate.maxPrice > realEstate.downPayment, "real estate projection must estimate buying power");
 
+const onboarding = new Component();
+onboarding.props = { mode: "desktop" };
+onboarding.showToast = () => {};
+onboarding._persist = () => {};
+onboarding.state.currency = "USD";
+onboarding.state.financialPlan = onboarding._mergePlan({
+  onboarding: { completed: false },
+  profile: { display_name: "Paul", main_currency: "USD" },
+  structured: {
+    accounts: [{ name: "BofA", balance: "300", role: "Coussin de sécurité" }],
+    income: [
+      {
+        source: "InvenTech",
+        amount: "3200",
+        frequency: "Bi-hebdomadaire",
+        payday: "Vendredi",
+        income_type: "Fixe",
+      },
+    ],
+    fixedExpenses: [{ name: "Loyer", amount: "792,35", day: "6", category: "Logement" }],
+    debts: [{ name: "CC1", balance: "500", minimum: "25", apr: "24,9", due: "12" }],
+    goals: [{ name: "Apport immobilier", target: "15000", date: "2027-06-01", priority: "Haute" }],
+    plannedPurchases: [
+      {
+        name: "MacBook",
+        price: "900",
+        schedule: "75/semaine",
+        priority: "Haute",
+        image_url: "javascript:alert(1)",
+      },
+    ],
+  },
+});
+onboarding._completeOnboarding();
+assert(onboarding.state.accounts.length === 1, "structured onboarding must create account rows");
+assert(onboarding.state.accounts[0].balance_minor === 30000, "structured account balance must parse");
+assert(
+  onboarding.state.accounts[0].role.indexOf("Coussin") === 0,
+  "structured account role must come from the closed role list"
+);
+assert(onboarding.state.incomes[0].amount_minor === 320000, "structured income amount must parse");
+assert(onboarding.state.incomes[0].freq.indexOf("Bi") === 0, "structured income frequency must be preserved");
+assert(onboarding.state.expenses[0].amount_minor === 79235, "structured fixed expense amount must parse");
+assert(onboarding.state.expenses[0].cat === "Logement", "structured fixed expense category must be preserved");
+assert(onboarding.state.debts[0].minimum_minor === 2500, "structured debt minimum must parse");
+assert(onboarding.state.debts[0].apr_bps === 2490, "structured debt APR must parse");
+assert(onboarding.state.savings[0].target_amount_minor === 1500000, "structured savings goal must parse");
+assert(onboarding.state.pots[0].weekly_minor === 7500, "structured planned purchase weekly amount must parse");
+assert(onboarding.state.pots[0].image_url === "", "unsafe planned purchase image URLs must be stripped");
+assert(
+  onboarding._debtMetaFromPlan(onboarding.state.financialPlan).cc1.minimum_minor === 2500,
+  "debt metadata must read structured onboarding rows"
+);
+assert(
+  onboarding._purchaseMetaFromPlan(onboarding.state.financialPlan).macbook.weekly_minor === 7500,
+  "planned purchase metadata must read structured onboarding rows"
+);
+assert(
+  onboarding._parseObRows("accounts", "BofA | 300 | coussin")[0].role.indexOf("Coussin") === 0,
+  "legacy account rows must normalize to a closed role"
+);
+assert(
+  onboarding._parseObRows("fixedExpenses", "TapTap Send | 200 | 15 | famille")[0].category === "Famille",
+  "legacy fixed expense rows must normalize to a closed category"
+);
+
 console.log(
   JSON.stringify(
     {
@@ -159,6 +225,7 @@ console.log(
         "sequential funding",
         "planned purchases",
         "real estate projection",
+        "structured onboarding rows",
       ],
     },
     null,
