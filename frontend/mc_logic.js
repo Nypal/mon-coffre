@@ -174,7 +174,23 @@ class Component extends DCLogic {
     financialPlan: null
   };
 
-  get mode(){ return (this.props && this.props.mode) || "desktop"; }
+  _viewportWidth(){
+    try{
+      if(typeof window!=="undefined" && Number(window.innerWidth)>0) return Number(window.innerWidth);
+      if(typeof document!=="undefined" && document.documentElement && Number(document.documentElement.clientWidth)>0) return Number(document.documentElement.clientWidth);
+    }catch(e){}
+    return 0;
+  }
+  _isMobileViewport(){
+    var w=this._viewportWidth();
+    return w>0 && w<760;
+  }
+  get mode(){
+    var forced=(this.props && this.props.mode) || "";
+    if(forced==="mobile") return "mobile";
+    if(this._isMobileViewport()) return "mobile";
+    return forced==="desktop" ? "desktop" : "desktop";
+  }
   pct(a,b){ return b?Math.max(0,Math.min(100,Math.round(a/b*100))):0; }
   statusStyle(s){
     const C=this.C;
@@ -532,6 +548,7 @@ class Component extends DCLogic {
   componentDidMount(){
     window.__mc=this;
     window.__mcMoneyTests=()=>this._moneyTests();
+    this._watchViewportMode();
     this._openIDB();
     var data=this._loadV2();
     if(!data) data=this._migrateV1();
@@ -555,6 +572,29 @@ class Component extends DCLogic {
     this._maybeInitCloud();
   }
   componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._wirePlanningUi(); }
+  componentWillUnmount(){
+    try{
+      if(this._viewportHandler && typeof window!=="undefined"){
+        window.removeEventListener("resize", this._viewportHandler);
+        window.removeEventListener("orientationchange", this._viewportHandler);
+      }
+    }catch(e){}
+  }
+  _watchViewportMode(){
+    try{
+      if(typeof window==="undefined" || !window.addEventListener) return;
+      var self=this, last=this.mode;
+      this._viewportHandler=function(){
+        var next=self.mode;
+        if(next!==last){
+          last=next;
+          self.setState({viewportMode:next, menuOpen:false});
+        }
+      };
+      window.addEventListener("resize", this._viewportHandler, {passive:true});
+      window.addEventListener("orientationchange", this._viewportHandler, {passive:true});
+    }catch(e){}
+  }
 
   /* ---------- IndexedDB: private attachments ---------- */
   _openIDB(){

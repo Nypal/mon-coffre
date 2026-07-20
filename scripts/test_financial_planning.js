@@ -40,6 +40,15 @@ const { Component } = require(join(__dirname, "..", "frontend", "mc_logic.js"));
 
 const app = new Component();
 app.props = { mode: "desktop" };
+global.window.innerWidth = 390;
+assert(app.mode === "mobile", "narrow phone viewports must force mobile layout");
+let mobileVals = app.renderVals();
+assert(mobileVals.isMobile === true && mobileVals.isDesktop === false, "mobile render values must hide desktop shell");
+global.window.innerWidth = 1024;
+assert(app.mode === "desktop", "wide viewports must keep desktop layout");
+let desktopVals = app.renderVals();
+assert(desktopVals.isDesktop === true && desktopVals.isMobile === false, "desktop render values must keep desktop shell");
+delete global.window.innerWidth;
 
 const money = app._moneyTests();
 assert(money.passed === 33 && money.failed === 0, "money tests must pass 33/33");
