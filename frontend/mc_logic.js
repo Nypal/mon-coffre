@@ -604,6 +604,7 @@ class Component extends DCLogic {
       onboarding:{completed:false,completed_at:null,step:0},
       profile:{display_name:"",main_currency:"USD",country:"US"},
       raw:{income:"",accounts:"",fixedExpenses:"",debts:"",goals:"",plannedPurchases:"",riskAreas:"",dangerousPayday:""},
+      structured:{income:[],accounts:[],fixedExpenses:[],debts:[],goals:[],plannedPurchases:[]},
       lifestyle:{old_income_minor:0,new_income_minor:0,change_date:"",baseline_expense_minor:0,threshold_pct:15,excluded:"Logement, dettes, urgence médicale"},
       snowball:{monthly_budget_minor:0,strategy:"snowball"},
       funding:{mode:"sequential",emergency_first:true},
@@ -638,7 +639,175 @@ class Component extends DCLogic {
   }
   _parts(line){ return String(line||"").split("|").map(function(x){ return x.trim(); }); }
   _moneyInput(v, cur){ return this.mParse(String(v||"").replace(/\$/g,""), cur||this.state.currency); }
+  _moneyFromText(v, cur){
+    var m=String(v||"").replace(/\$/g,"").match(/-?\d+(?:[.,]\d+)?/);
+    return this._moneyInput(m?m[0]:"", cur||this.state.currency);
+  }
   _numInput(v){ return Number(String(v||"").replace(",",".").replace(/[^0-9.-]/g,""))||0; }
+  _obDayOptions(){
+    var opts=["Variable"]; for(var i=1;i<=31;i++) opts.push(String(i));
+    return opts.concat(["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]);
+  }
+  _obClosed(v, allowed, fallback){
+    var s=String(v||"").trim().toLowerCase();
+    for(var i=0;i<allowed.length;i++){ if(String(allowed[i]).toLowerCase()===s) return allowed[i]; }
+    return fallback||allowed[0];
+  }
+  _obRole(v){
+    var s=String(v||"").toLowerCase();
+    if(/coussin|urgence|securite|sécurité/.test(s)) return "Coussin de sécurité";
+    if(/epargne|épargne|saving/.test(s)) return "Épargne";
+    if(/depense|dépense|spend|courant/.test(s)) return "Dépenses";
+    return this._obClosed(v,["Dépenses","Coussin de sécurité","Épargne","Autre"],"Autre");
+  }
+  _obFreq(v){
+    var s=String(v||"").toLowerCase();
+    if(/bi|deux/.test(s)) return "Bi-hebdomadaire";
+    if(/hebdo|week|semaine/.test(s)) return "Hebdomadaire";
+    if(/variable|irr/.test(s)) return "Variable";
+    return this._obClosed(v,["Hebdomadaire","Bi-hebdomadaire","Mensuel","Variable"],"Mensuel");
+  }
+  _obIncomeType(v){
+    var s=String(v||"").toLowerCase();
+    return /variable|var/.test(s) ? "Variable" : "Fixe";
+  }
+  _obCategory(v){
+    var s=String(v||"").toLowerCase();
+    if(/loyer|rent|logement|mortgage/.test(s)) return "Logement";
+    if(/famille|family|taptap|transfert/.test(s)) return "Famille";
+    if(/abo|subscription|apple|netflix|phone|téléphone/.test(s)) return "Abonnement";
+    if(/transport|essence|carburant|uber|bus/.test(s)) return "Transport";
+    return this._obClosed(v,["Logement","Famille","Abonnement","Transport","Autre"],"Autre");
+  }
+  _obPriority(v){ return this._obClosed(v,["Haute","Moyenne","Basse"],"Moyenne"); }
+  _obDefaultRow(kind){
+    var m={
+      income:{source:"",amount:"",frequency:"Mensuel",payday:"Variable",income_type:"Fixe"},
+      accounts:{name:"",balance:"",role:"Dépenses"},
+      fixedExpenses:{name:"",amount:"",day:"Variable",category:"Logement"},
+      debts:{name:"",balance:"",minimum:"",apr:"0",due:"Variable"},
+      goals:{name:"",target:"",date:"",priority:"Moyenne"},
+      plannedPurchases:{name:"",price:"",schedule:"",priority:"Moyenne",image_url:""}
+    };
+    return Object.assign({},m[kind]||{});
+  }
+  _parseObRows(kind, raw){
+    var self=this;
+    return this._lines(raw).map(function(line){
+      var a=self._parts(line), row=self._obDefaultRow(kind);
+      if(kind==="income") return {source:a[0]||"",amount:a[1]||"",frequency:self._obFreq(a[2]),payday:a[3]||"Variable",income_type:self._obIncomeType(a[4])};
+      if(kind==="accounts") return {name:a[0]||"",balance:a[1]||"",role:self._obRole(a[2])};
+      if(kind==="fixedExpenses") return {name:a[0]||"",amount:a[1]||"",day:a[2]||"Variable",category:self._obCategory(a[3])};
+      if(kind==="debts") return {name:a[0]||"",balance:a[1]||"",minimum:a[2]||"",apr:a[3]||"0",due:a[4]||"Variable"};
+      if(kind==="goals") return {name:a[0]||"",target:a[1]||"",date:a[2]||"",priority:self._obPriority(a[3])};
+      if(kind==="plannedPurchases") return {name:a[0]||"",price:a[1]||"",schedule:a[2]||"",priority:self._obPriority(a[3]),image_url:self._safeImageUrl(a[4])};
+      return row;
+    });
+  }
+  _obRows(kind, plan){
+    var self=this, p=this._mergePlan(plan||this._plan()), s=(p.structured&&p.structured[kind])||[];
+    function clean(x){
+      var row=Object.assign(self._obDefaultRow(kind),x||{});
+      if(kind==="accounts") row.role=self._obRole(row.role);
+      if(kind==="income"){ row.frequency=self._obFreq(row.frequency); row.income_type=self._obIncomeType(row.income_type); row.payday=row.payday||"Variable"; }
+      if(kind==="fixedExpenses"){ row.day=row.day||"Variable"; row.category=self._obCategory(row.category); }
+      if(kind==="debts") row.due=row.due||"Variable";
+      if(kind==="goals") row.priority=self._obPriority(row.priority);
+      if(kind==="plannedPurchases"){ row.priority=self._obPriority(row.priority); row.image_url=self._safeImageUrl(row.image_url); }
+      return row;
+    }
+    if(Array.isArray(s) && s.length) return s.map(clean);
+    return this._parseObRows(kind,(p.raw&&p.raw[kind])||"");
+  }
+  _obSerialize(kind, rows){
+    rows=rows||[];
+    return rows.map(function(r){
+      if(kind==="income") return [r.source,r.amount,r.frequency,r.payday,r.income_type].join(" | ");
+      if(kind==="accounts") return [r.name,r.balance,r.role].join(" | ");
+      if(kind==="fixedExpenses") return [r.name,r.amount,r.day,r.category].join(" | ");
+      if(kind==="debts") return [r.name,r.balance,r.minimum,r.apr,r.due].join(" | ");
+      if(kind==="goals") return [r.name,r.target,r.date,r.priority].join(" | ");
+      if(kind==="plannedPurchases") return [r.name,r.price,r.schedule,r.priority,r.image_url||""].join(" | ");
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+  _obFields(kind){
+    var day=this._obDayOptions();
+    var fields={
+      income:[["source","Nom de la source","text","InvenTech"],["amount","Montant","money","3200"],["frequency","Fréquence","select",["Hebdomadaire","Bi-hebdomadaire","Mensuel","Variable"]],["payday","Jour de paie","select",day],["income_type","Type","select",["Fixe","Variable"]]],
+      accounts:[["name","Nom de la banque","text","Amegy"],["balance","Solde actuel","money","1200"],["role","Rôle","select",["Dépenses","Coussin de sécurité","Épargne","Autre"]]],
+      fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",day],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Autre"]]],
+      debts:[["name","Dette / créancier","text","CC1"],["balance","Solde","money","500"],["minimum","Minimum mensuel","money","25"],["apr","Taux %","text","24,9"],["due","Jour d'échéance","select",day]],
+      goals:[["name","Objectif","text","Épargne décembre"],["target","Montant cible","money","10000"],["date","Date cible","text","2026-12-31"],["priority","Priorité","select",["Haute","Moyenne","Basse"]]],
+      plannedPurchases:[["name","Objet","text","MacBook"],["price","Prix","money","900"],["schedule","Date ou contribution","text","2026-11-01 ou 75/semaine"],["priority","Priorité","select",["Haute","Moyenne","Basse"]],["image_url","Image optionnelle","text","https://..."]]
+    };
+    return fields[kind]||[];
+  }
+  _obRepeatHtml(kind,label,rows,addLabel,hint){
+    var fields=this._obFields(kind), data=(rows&&rows.length)?rows:[this._obDefaultRow(kind)], self=this;
+    var html='<section data-ob-section="'+this._esc(kind)+'" style="border:1px solid #EFF1EC;background:#F7F8F5;border-radius:16px;padding:12px;margin-bottom:13px"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px"><div><div style="font-size:12.5px;font-weight:900;color:#5A6B78">'+this._esc(label)+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:2px">'+this._esc(hint||"Ajoute une ligne, ou passe cette étape si elle ne te concerne pas.")+'</div></div><button type="button" data-ob-action="add" data-ob-kind="'+this._esc(kind)+'" style="flex:none;padding:9px 11px;border-radius:11px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:12.5px;font-weight:900;cursor:pointer">+ Ajouter</button></div><div style="display:flex;flex-direction:column;gap:10px">';
+    data.forEach(function(row,i){
+      html+='<div data-ob-row="'+i+'" style="background:#fff;border:1px solid #E7E9E4;border-radius:14px;padding:11px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:9px;align-items:end">';
+      fields.forEach(function(f){
+        var key=f[0], lab=f[1], type=f[2], val=row[key]||"", opts=f[3];
+        html+='<label style="display:block"><span style="display:block;font-size:11.5px;font-weight:800;color:#5A6B78;margin-bottom:5px">'+self._esc(lab)+'</span>';
+        if(type==="select"){
+          html+='<select data-ob-kind="'+self._esc(kind)+'" data-ob-index="'+i+'" data-ob-key="'+self._esc(key)+'" style="width:100%;border:1px solid #E1E4DE;background:#FAFBF9;border-radius:11px;padding:10px;font-size:12.5px;font-weight:800;outline:none;color:#17293C">';
+          (opts||[]).forEach(function(o){ html+='<option value="'+self._esc(o)+'" '+(String(val)===String(o)?"selected":"")+'>'+self._esc(o)+'</option>'; });
+          html+='</select>';
+        } else {
+          html+='<input data-ob-kind="'+self._esc(kind)+'" data-ob-index="'+i+'" data-ob-key="'+self._esc(key)+'" '+(type==="money"?'inputmode="decimal"':'')+' value="'+self._esc(val)+'" placeholder="'+self._esc(opts||"")+'" style="width:100%;border:1px solid #E1E4DE;background:#FAFBF9;border-radius:11px;padding:10px;font-size:12.5px;font-weight:700;outline:none;color:#17293C">';
+        }
+        html+='</label>';
+      });
+      html+='</div><button type="button" data-ob-action="remove" data-ob-kind="'+self._esc(kind)+'" data-ob-index="'+i+'" style="margin-top:9px;padding:8px 10px;border-radius:10px;border:1px solid #F0D7D2;background:#FFF8F6;color:#C15F4C;font-size:12px;font-weight:900;cursor:pointer">× Supprimer</button></div>';
+    });
+    return html+'</div></section>';
+  }
+  _collectObRows(kind){
+    var nodes=document.querySelectorAll('[data-ob-kind="'+kind+'"][data-ob-key]'), by={};
+    Array.prototype.forEach.call(nodes,function(el){
+      var i=String(el.getAttribute("data-ob-index")||"0"), k=el.getAttribute("data-ob-key");
+      by[i]=by[i]||{}; by[i][k]=String(el.value||"").trim();
+    });
+    return Object.keys(by).sort(function(a,b){return Number(a)-Number(b);}).map(function(i){ return by[i]; }).filter(function(r){
+      return Object.keys(r).some(function(k){ return String(r[k]||"").trim()!==""; });
+    });
+  }
+  _obRowsError(kind, rows, allowEmpty){
+    rows=rows||[];
+    if(!rows.length) return allowEmpty?"":"Ajoute au moins une ligne, ou clique Passer cette étape.";
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i], n=i+1;
+      if(kind==="accounts"){
+        if(!r.name) return "Compte "+n+" : indique le nom de la banque.";
+        if(String(r.balance||"").trim()==="") return "Compte "+n+" : indique le solde, même 0.";
+        r.role=this._obRole(r.role);
+      } else if(kind==="income"){
+        if(!r.source) return "Revenu "+n+" : indique la source.";
+        if(this._moneyInput(r.amount,this.state.currency)<=0) return "Revenu "+n+" : indique un montant.";
+        r.frequency=this._obFreq(r.frequency); r.income_type=this._obIncomeType(r.income_type); r.payday=r.payday||"Variable";
+      } else if(kind==="fixedExpenses"){
+        if(!r.name) return "Dépense "+n+" : indique le nom.";
+        if(this._moneyInput(r.amount,this.state.currency)<=0) return "Dépense "+n+" : indique un montant.";
+        r.day=r.day||"Variable"; r.category=this._obCategory(r.category);
+      } else if(kind==="debts"){
+        if(!r.name) return "Dette "+n+" : indique le nom.";
+        if(this._moneyInput(r.balance,this.state.currency)<=0) return "Dette "+n+" : indique le solde.";
+        if(String(r.minimum||"").trim()==="") return "Dette "+n+" : indique le minimum mensuel, même 0.";
+        r.due=r.due||"Variable";
+      } else if(kind==="goals"){
+        if(!r.name) return "Objectif "+n+" : indique le nom.";
+        if(this._moneyInput(r.target,this.state.currency)<=0) return "Objectif "+n+" : indique le montant cible.";
+        r.priority=this._obPriority(r.priority);
+      } else if(kind==="plannedPurchases"){
+        if(!r.name) return "Achat "+n+" : indique l'objet.";
+        if(this._moneyInput(r.price,this.state.currency)<=0) return "Achat "+n+" : indique le prix.";
+        r.priority=this._obPriority(r.priority); r.image_url=this._safeImageUrl(r.image_url);
+      }
+    }
+    return "";
+  }
   _hasMeaningfulData(){
     var s=this.state;
     return !!((s.accounts&&s.accounts.length)||(s.incomes&&s.incomes.length)||(s.expenses&&s.expenses.length)||(s.debts&&s.debts.length)||(s.savings&&s.savings.length)||(s.pots&&s.pots.length));
@@ -1220,19 +1389,19 @@ class Component extends DCLogic {
       body+=this._fieldHtml("ob_new_income","Nouveau revenu mensuel",this._plain(life.new_income_minor||0,p.profile.main_currency||"USD"),"Ex : 5300","text");
       body+=this._fieldHtml("ob_baseline","Baseline dépenses mensuelles",this._plain(life.baseline_expense_minor||0,p.profile.main_currency||"USD"),"Ex : 2100","text");
       body+=this._fieldHtml("ob_change","Date du changement",life.change_date||"","Ex : 2026-07-01","text");
-      body+=this._areaHtml("ob_income","Sources de revenus obligatoires",r.income,"Une ligne par source : InvenTech | 3200 | bi-hebdo | vendredi | fixe");
+      body+=this._obRepeatHtml("income","Sources de revenus",this._obRows("income",p),"+ Ajouter une source","Ajoute au moins une source, ou passe si tu veux compléter plus tard.");
     } else if(step===1){
-      body+=this._areaHtml("ob_accounts","Comptes obligatoires",r.accounts,"Une ligne par compte : Amegy | 1200 | dépenses\nBofA | 300 | coussin");
+      body+=this._obRepeatHtml("accounts","Comptes",this._obRows("accounts",p),"+ Ajouter un compte","Le rôle vient d'une liste fermée pour que le coussin, l'épargne et les dépenses soient reconnus automatiquement.");
     } else if(step===2){
-      body+=this._areaHtml("ob_fixed","Dépenses fixes obligatoires",r.fixedExpenses,"Une ligne : Loyer | 792,35 | 6 | Logement\nTapTap Send | 200 | 15 | Famille");
+      body+=this._obRepeatHtml("fixedExpenses","Dépenses fixes",this._obRows("fixedExpenses",p),"+ Ajouter une dépense","Ajoute au moins une dépense fixe, ou passe si aucune ne s'applique.");
     } else if(step===3){
       body+=this._fieldHtml("ob_debt_budget","Budget mensuel total dettes",this._plain(snow.monthly_budget_minor||0,p.profile.main_currency||"USD"),"Ex : 300","text");
-      body+=this._areaHtml("ob_debts","Dettes obligatoires",r.debts,"Une ligne : CC1 | 500 | 25 | 24,9 | 12\nBest Buy | 900 | 30 | 0 | 18");
+      body+=this._obRepeatHtml("debts","Dettes",this._obRows("debts",p),"+ Ajouter une dette","Ajoute tes dettes pour activer la boule de neige, ou passe si tu n'en as pas.");
     } else if(step===4){
       body+=this._fieldHtml("ob_emergency","Coussin de sécurité cible",this._plain((p.emergency_target_minor||0),p.profile.main_currency||"USD"),"Ex : 800","text");
       body+=this._selectHtml("ob_seq","Mode de financement",fund.mode||"sequential",[{value:"sequential",label:"Séquentiel : un objectif à la fois"},{value:"parallel",label:"Parallèle"}]);
-      body+=this._areaHtml("ob_goals","Objectifs / cagnottes obligatoires",r.goals,"Une ligne : Épargne décembre | 10000 | 2026-12-31 | Haute\nApport immobilier | 15000 | 2027-06-01 | Haute");
-      body+=this._areaHtml("ob_purchases","Achats planifiés obligatoires",r.plannedPurchases,"Une ligne ou écris Aucun : MacBook | 900 | 2026-11-01 | Haute");
+      body+=this._obRepeatHtml("goals","Objectifs / cagnottes",this._obRows("goals",p),"+ Ajouter un objectif","Ajoute une cagnotte ou un objectif d'épargne, ou passe si tu veux compléter plus tard.");
+      body+=this._obRepeatHtml("plannedPurchases","Achats planifiés",this._obRows("plannedPurchases",p),"+ Ajouter un achat","Planifie un achat cash anti-Klarna, ou laisse vide si aucun achat n'est prévu.");
       body+=this._selectHtml("ob_re_status","Projet immobilier",re.status||"not_yet",[{value:"yes",label:"Oui"},{value:"not_yet",label:"Pas encore"},{value:"no",label:"Non"}]);
       body+=this._fieldHtml("ob_re_price","Prix cible optionnel",this._plain(re.target_price_minor||0,p.profile.main_currency||"USD"),"Ex : 230000","text");
       body+=this._fieldHtml("ob_re_rate","Taux estimé (%)",String((re.rate_bps||700)/100).replace(".",","),"Ex : 7","text");
@@ -1244,38 +1413,54 @@ class Component extends DCLogic {
       body+=this._selectHtml("ob_review","Bilan mensuel automatique",rev.enabled===false?"no":"yes",[{value:"yes",label:"Oui"},{value:"no",label:"Non"}]);
     }
     el.style.cssText="position:fixed;inset:0;z-index:9800;background:rgba(243,244,241,.98);display:flex;align-items:center;justify-content:center;padding:18px;"+this._plannerStyle();
-    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Onboarding obligatoire</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-next" type="button" style="flex:2;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Toutes les réponses sont nécessaires pour activer les fonctionnalités. Pour une situation non concernée, écris <b>Aucun</b>.</p></div>';
-    var back=el.querySelector("#mc-ob-back"), next=el.querySelector("#mc-ob-next");
+    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Onboarding obligatoire</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
+    var back=el.querySelector("#mc-ob-back"), skip=el.querySelector("#mc-ob-skip"), next=el.querySelector("#mc-ob-next");
     back.onclick=function(){ if(step>0){ p.onboarding.step=step-1; self._setPlan(p); } };
-    next.onclick=function(){ var err=self._saveOnboardingStep(step); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
+    skip.onclick=function(){ var err=self._saveOnboardingStep(step,true); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
+    next.onclick=function(){ var err=self._saveOnboardingStep(step,false); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
+    el.onclick=function(e){
+      var b=e.target && e.target.closest ? e.target.closest("[data-ob-action]") : null; if(!b) return;
+      var kind=b.getAttribute("data-ob-kind"), action=b.getAttribute("data-ob-action"), plan=self._plan(), rows=self._collectObRows(kind);
+      if(action==="add") rows.push(self._obDefaultRow(kind));
+      if(action==="remove") rows.splice(Number(b.getAttribute("data-ob-index"))||0,1);
+      plan.structured=plan.structured||{}; plan.structured[kind]=rows; if(plan.raw) plan.raw[kind]=self._obSerialize(kind,rows);
+      self._setPlan(plan);
+    };
   }
-  _saveOnboardingStep(step){
+  _saveOnboardingStep(step, skip){
     var p=this._plan(), cur=(document.getElementById("ob_cur")&&document.getElementById("ob_cur").value)||p.profile.main_currency||this.state.currency, life=p.lifestyle, r=p.raw;
     function val(id){ var e=document.getElementById(id); return e?e.value.trim():""; }
+    p.structured=p.structured||{};
     if(step===0){
-      if(!val("ob_name")) return "Indique ton nom affiché.";
-      if(!val("ob_income")) return "Indique au moins une source de revenu ou écris Aucun.";
-      if(this._moneyInput(val("ob_new_income"),cur)<=0) return "Indique ton revenu mensuel actuel.";
-      p.profile.display_name=val("ob_name"); p.profile.main_currency=cur; p.raw.income=val("ob_income");
+      var incomeRows=skip?[]:this._collectObRows("income"), incomeErr=skip?"":this._obRowsError("income",incomeRows,false);
+      if(!skip && !val("ob_name")) return "Indique ton nom affiché.";
+      if(!skip && incomeErr) return incomeErr;
+      if(!skip && this._moneyInput(val("ob_new_income"),cur)<=0) return "Indique ton revenu mensuel actuel.";
+      p.profile.display_name=val("ob_name")||p.profile.display_name; p.profile.main_currency=cur; p.structured.income=incomeRows; p.raw.income=this._obSerialize("income",incomeRows);
       life.old_income_minor=this._moneyInput(val("ob_old_income"),cur); life.new_income_minor=this._moneyInput(val("ob_new_income"),cur); life.baseline_expense_minor=this._moneyInput(val("ob_baseline"),cur); life.change_date=val("ob_change");
     } else if(step===1){
-      if(!val("ob_accounts")) return "Indique tes comptes ou écris Aucun.";
-      p.raw.accounts=val("ob_accounts");
+      var accountRows=skip?[]:this._collectObRows("accounts"), accountErr=skip?"":this._obRowsError("accounts",accountRows,false);
+      if(accountErr) return accountErr;
+      p.structured.accounts=accountRows; p.raw.accounts=this._obSerialize("accounts",accountRows);
     } else if(step===2){
-      if(!val("ob_fixed")) return "Indique tes dépenses fixes ou écris Aucun.";
-      p.raw.fixedExpenses=val("ob_fixed");
+      var fixedRows=skip?[]:this._collectObRows("fixedExpenses"), fixedErr=skip?"":this._obRowsError("fixedExpenses",fixedRows,false);
+      if(fixedErr) return fixedErr;
+      p.structured.fixedExpenses=fixedRows; p.raw.fixedExpenses=this._obSerialize("fixedExpenses",fixedRows);
     } else if(step===3){
-      if(!val("ob_debts")) return "Indique tes dettes ou écris Aucun.";
-      p.snowball.monthly_budget_minor=this._moneyInput(val("ob_debt_budget"),cur); p.raw.debts=val("ob_debts");
+      var debtRows=skip?[]:this._collectObRows("debts"), debtErr=skip?"":this._obRowsError("debts",debtRows,false);
+      if(debtErr) return debtErr;
+      p.snowball.monthly_budget_minor=this._moneyInput(val("ob_debt_budget"),cur); p.structured.debts=debtRows; p.raw.debts=this._obSerialize("debts",debtRows);
     } else if(step===4){
-      if(!val("ob_goals")) return "Indique tes objectifs ou écris Aucun.";
-      if(!val("ob_purchases")) return "Indique tes achats planifiés ou écris Aucun.";
-      p.emergency_target_minor=this._moneyInput(val("ob_emergency"),cur); p.funding.mode=val("ob_seq"); p.raw.goals=val("ob_goals"); p.raw.plannedPurchases=val("ob_purchases");
+      var goalRows=skip?[]:this._collectObRows("goals"), purchaseRows=skip?[]:this._collectObRows("plannedPurchases");
+      var goalErr=goalRows.length?this._obRowsError("goals",goalRows,true):"", purchaseErr=purchaseRows.length?this._obRowsError("plannedPurchases",purchaseRows,true):"";
+      if(goalErr) return goalErr; if(purchaseErr) return purchaseErr;
+      if(!skip && !goalRows.length && !purchaseRows.length && this._moneyInput(val("ob_emergency"),cur)<=0 && val("ob_re_status")==="no") return "Ajoute au moins un objectif, ou clique Passer cette étape.";
+      p.emergency_target_minor=this._moneyInput(val("ob_emergency"),cur); p.funding.mode=val("ob_seq"); p.structured.goals=goalRows; p.structured.plannedPurchases=purchaseRows; p.raw.goals=this._obSerialize("goals",goalRows); p.raw.plannedPurchases=this._obSerialize("plannedPurchases",purchaseRows);
       p.realEstate.status=val("ob_re_status"); p.realEstate.target_price_minor=this._moneyInput(val("ob_re_price"),cur); p.realEstate.rate_bps=Math.round(this._numInput(val("ob_re_rate"))*100)||700;
     } else {
-      if(!val("ob_risk")) return "Indique tes habitudes à risque ou écris Aucun.";
-      if(!val("ob_payday")) return "Indique ton jour de paie dangereux ou écris Aucun.";
-      p.raw.riskAreas=val("ob_risk"); p.raw.dangerousPayday=val("ob_payday"); p.lifestyle.threshold_pct=Math.max(1,Math.round(this._numInput(val("ob_threshold"))||15)); p.lifestyle.excluded=val("ob_excluded"); p.monthlyReview.enabled=val("ob_review")==="yes";
+      if(!skip && !val("ob_risk")) return "Indique tes habitudes à risque, ou clique Passer cette étape.";
+      if(!skip && !val("ob_payday")) return "Indique ton jour de paie dangereux, ou clique Passer cette étape.";
+      p.raw.riskAreas=skip?"":val("ob_risk"); p.raw.dangerousPayday=skip?"":val("ob_payday"); p.lifestyle.threshold_pct=Math.max(1,Math.round(this._numInput(val("ob_threshold"))||15)); p.lifestyle.excluded=val("ob_excluded"); p.monthlyReview.enabled=val("ob_review")==="yes";
     }
     this._setPlan(p);
     return "";
@@ -1283,19 +1468,19 @@ class Component extends DCLogic {
   _completeOnboarding(){
     var p=this._plan(), cur=p.profile.main_currency||this.state.currency, patch={currency:cur}, self=this;
     function mkId(){ return self._uid(); }
-    var accounts=this._lines(p.raw.accounts).map(function(line){ var a=self._parts(line); return {id:mkId(),name:a[0]||"Compte",type:a[2]||"Banque",balance_minor:self._moneyInput(a[1],cur),currency:cur,updated:"Aujourd'hui",linked:true,icon:self._iconForType(a[2]||"Banque"),c:"#1E5081",b:"#EAF1F8",role:a[2]||""}; });
+    var accounts=this._obRows("accounts",p).map(function(a){ return {id:mkId(),name:a.name||"Compte",type:a.role||"Autre",balance_minor:self._moneyInput(a.balance,cur),currency:cur,updated:"Aujourd'hui",linked:true,icon:self._iconForType(a.role||"Autre"),c:"#1E5081",b:"#EAF1F8",role:a.role||"Autre"}; });
     var firstAcc=accounts[0]?accounts[0].name:"";
-    var incomes=this._lines(p.raw.income).map(function(line){ var a=self._parts(line); return {id:mkId(),source:a[0]||"Revenu",label:a[0]||"Revenu",amount_minor:self._moneyInput(a[1],cur),currency:cur,freq:a[2]||"Mensuel",date:self._todayFull(),month:self._thisMonth(),account:firstAcc,note:"Jour: "+(a[3]||"")+"; type: "+(a[4]||"")}; });
-    var expenses=this._lines(p.raw.fixedExpenses).map(function(line){ var a=self._parts(line); return {id:mkId(),cat:a[3]||"Factures",payee:a[0]||"Dépense fixe",amount_minor:self._moneyInput(a[1],cur),currency:cur,method:"Prévu",account:firstAcc,date:String(a[2]||self._todayShort()),month:self._thisMonth(),proof:null,note:"Dépense fixe onboarding"}; });
-    var debts=this._lines(p.raw.debts).map(function(line){ var a=self._parts(line), total=self._moneyInput(a[1],cur); return {id:mkId(),name:a[0]||"Dette",creditor:a[0]||"Créancier",total_amount_minor:total,paid_amount_minor:0,currency:cur,due:a[4]||"—",status:"À jour",minimum_minor:self._moneyInput(a[2],cur),apr_bps:Math.round(self._numInput(a[3])*100)||0}; });
+    var incomes=this._obRows("income",p).map(function(a){ return {id:mkId(),source:a.source||"Revenu",label:a.source||"Revenu",amount_minor:self._moneyInput(a.amount,cur),currency:cur,freq:a.frequency||"Mensuel",date:self._todayFull(),month:self._thisMonth(),account:firstAcc,note:"Jour: "+(a.payday||"Variable")+"; type: "+(a.income_type||"Fixe")}; });
+    var expenses=this._obRows("fixedExpenses",p).map(function(a){ return {id:mkId(),cat:a.category||"Autre",payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:String(a.day||self._todayShort()),month:self._thisMonth(),proof:null,note:"Dépense fixe onboarding"}; });
+    var debts=this._obRows("debts",p).map(function(a){ var total=self._moneyInput(a.balance,cur); return {id:mkId(),name:a.name||"Dette",creditor:a.name||"Créancier",total_amount_minor:total,paid_amount_minor:0,currency:cur,due:a.due||"—",status:"À jour",minimum_minor:self._moneyInput(a.minimum,cur),apr_bps:Math.round(self._numInput(a.apr)*100)||0}; });
     var savings=[];
     if((p.emergency_target_minor||0)>0) savings.push({id:mkId(),name:"Coussin de sécurité",target_amount_minor:p.emergency_target_minor,current_amount_minor:0,currency:cur,date:"—",status:"En cours",priority:"Haute"});
-    this._lines(p.raw.goals).forEach(function(line){ var a=self._parts(line); savings.push({id:mkId(),name:a[0]||"Objectif",target_amount_minor:self._moneyInput(a[1],cur),current_amount_minor:0,currency:cur,date:a[2]||"—",priority:a[3]||"Moyenne",status:"En cours"}); });
-    var pots=this._lines(p.raw.plannedPurchases).map(function(line){
-      var a=self._parts(line), schedule=a[2]||"", weekly=0, monthly=0, date=schedule||"—", targetIso=self._isoDateMaybe(schedule);
-      if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyInput(schedule,cur); date="—"; targetIso=null; }
-      if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyInput(schedule,cur); weekly=Math.round(monthly/4.345); date="—"; targetIso=null; }
-      return {id:mkId(),name:a[0]||"Achat planifié",target_amount_minor:self._moneyInput(a[1],cur),current_amount_minor:0,currency:cur,date:date,target_iso:targetIso,priority:a[3]||"Moyenne",status:"En cours",goal_type:"planned_purchase",planned:true,weekly_minor:weekly,image_url:self._safeImageUrl(a[4])};
+    this._obRows("goals",p).forEach(function(a){ savings.push({id:mkId(),name:a.name||"Objectif",target_amount_minor:self._moneyInput(a.target,cur),current_amount_minor:0,currency:cur,date:a.date||"—",priority:a.priority||"Moyenne",status:"En cours"}); });
+    var pots=this._obRows("plannedPurchases",p).map(function(a){
+      var schedule=a.schedule||"", weekly=0, monthly=0, date=schedule||"—", targetIso=self._isoDateMaybe(schedule);
+      if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyFromText(schedule,cur); date="—"; targetIso=null; }
+      if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyFromText(schedule,cur); weekly=Math.round(monthly/4.345); date="—"; targetIso=null; }
+      return {id:mkId(),name:a.name||"Achat planifié",target_amount_minor:self._moneyInput(a.price,cur),current_amount_minor:0,currency:cur,date:date,target_iso:targetIso,priority:a.priority||"Moyenne",status:"En cours",goal_type:"planned_purchase",planned:true,weekly_minor:weekly,image_url:self._safeImageUrl(a.image_url)};
     });
     if(accounts.length) patch.accounts=accounts;
     if(incomes.length) patch.incomes=incomes;
@@ -1712,20 +1897,20 @@ class Component extends DCLogic {
     },{onConflict:"user_id"}).then(function(r){ if(r.error) throw r.error; return r.data; }).catch(function(e){ self._cloudHandleError("planPersist", e); return null; });
   }
   _debtMetaFromPlan(plan){
-    var self=this, map={};
-    this._lines((plan&&plan.raw&&plan.raw.debts)||"").forEach(function(line){
-      var a=self._parts(line), name=(a[0]||"").toLowerCase();
-      if(name) map[name]={minimum_minor:self._moneyInput(a[2],(plan.profile&&plan.profile.main_currency)||self.state.currency),apr_bps:Math.round(self._numInput(a[3])*100)||0};
+    var self=this, map={}, p=this._mergePlan(plan||{}), cur=(p.profile&&p.profile.main_currency)||self.state.currency;
+    this._obRows("debts",p).forEach(function(a){
+      var name=String(a.name||"").toLowerCase();
+      if(name) map[name]={minimum_minor:self._moneyInput(a.minimum,cur),apr_bps:Math.round(self._numInput(a.apr)*100)||0};
     });
     return map;
   }
   _purchaseMetaFromPlan(plan){
-    var self=this, map={};
-    this._lines((plan&&plan.raw&&plan.raw.plannedPurchases)||"").forEach(function(line){
-      var a=self._parts(line), name=(a[0]||"").toLowerCase(), schedule=a[2]||"", weekly=0, monthly=0, targetIso=self._isoDateMaybe(schedule), cur=(plan.profile&&plan.profile.main_currency)||self.state.currency;
-      if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyInput(schedule,cur); targetIso=null; }
-      if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyInput(schedule,cur); weekly=Math.round(monthly/4.345); targetIso=null; }
-      if(name) map[name]={goal_type:"planned_purchase",planned:true,weekly_minor:weekly,target_iso:targetIso,image_url:self._safeImageUrl(a[4])};
+    var self=this, map={}, p=this._mergePlan(plan||{}), cur=(p.profile&&p.profile.main_currency)||self.state.currency;
+    this._obRows("plannedPurchases",p).forEach(function(a){
+      var name=String(a.name||"").toLowerCase(), schedule=a.schedule||"", weekly=0, monthly=0, targetIso=self._isoDateMaybe(schedule);
+      if(/semaine|hebdo|week/i.test(schedule)){ weekly=self._moneyFromText(schedule,cur); targetIso=null; }
+      if(/mois|mensuel|month/i.test(schedule)){ monthly=self._moneyFromText(schedule,cur); weekly=Math.round(monthly/4.345); targetIso=null; }
+      if(name) map[name]={goal_type:"planned_purchase",planned:true,weekly_minor:weekly,target_iso:targetIso,image_url:self._safeImageUrl(a.image_url)};
     });
     return map;
   }

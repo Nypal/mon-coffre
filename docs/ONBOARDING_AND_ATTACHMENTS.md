@@ -6,7 +6,9 @@ This document describes the first production onboarding release for Mon Coffre.
 
 A signed-in cloud user must complete onboarding before using the application modules.
 
-The onboarding has six screens maximum. Each screen requires an answer. If a section does not apply, the user must explicitly write `Aucun` instead of leaving it blank. This keeps the flow complete without forcing fake data.
+The onboarding has six screens maximum. The onboarding gate is mandatory, but each data section can be skipped when it does not apply. Users must never be asked to type `Aucun` manually.
+
+Any repeatable financial data must use structured rows, not fragile free-text formats such as `Name | Amount | Frequency | Day`. Each repeatable section has closed selects where later calculations depend on stable values.
 
 ## Onboarding Screens
 
@@ -17,31 +19,47 @@ The onboarding has six screens maximum. Each screen requires an answer. If a sec
    - current monthly income;
    - monthly spending baseline;
    - date of income change;
-   - income sources, one per line.
+   - repeatable income source rows:
+     - source name;
+     - amount;
+     - frequency: `Hebdomadaire`, `Bi-hebdomadaire`, `Mensuel`, or `Variable`;
+     - payday;
+     - type: `Fixe` or `Variable`.
 
 2. Accounts
-   - account name;
-   - current balance;
-   - role or usage of the account.
+   - repeatable account rows:
+     - bank or account name;
+     - current balance;
+     - role: `Dépenses`, `Coussin de sécurité`, `Épargne`, or `Autre`.
 
 3. Fixed Expenses
-   - rent or mortgage;
-   - subscriptions;
-   - family transfers;
-   - recurring bills;
-   - payment day and category.
+   - repeatable fixed expense rows:
+     - name;
+     - amount;
+     - day of month or variable;
+     - category: `Logement`, `Famille`, `Abonnement`, `Transport`, or `Autre`.
 
 4. Debts
-   - creditor or debt name;
-   - balance;
-   - minimum monthly payment;
-   - interest rate;
-   - due day.
+   - repeatable debt rows:
+     - creditor or debt name;
+     - balance;
+     - minimum monthly payment;
+     - interest rate;
+     - due day.
 
 5. Goals
    - emergency fund target;
-   - savings goals;
-   - planned purchases;
+   - repeatable savings goal rows:
+     - goal name;
+     - target amount;
+     - target date;
+     - priority;
+   - repeatable planned purchase rows:
+     - item name;
+     - price;
+     - target date or weekly/monthly contribution;
+     - priority;
+     - optional image URL;
    - optional real estate status: `Oui`, `Pas encore`, or `Non`.
 
 6. Risk Habits
@@ -187,8 +205,10 @@ database/migrations/20260719_onboarding_modules_v1.sql
 ## Acceptance Criteria
 
 - A new confirmed cloud user cannot enter the application until onboarding is complete.
-- All six onboarding screens require an answer.
-- Writing `Aucun` is accepted for a non-applicable section.
+- The onboarding flow provides a real skip action for non-applicable sections.
+- Repeatable onboarding inputs use structured rows with add/remove controls.
+- Users are not asked to type `Aucun`.
+- Account roles, income frequencies, income types, fixed expense categories, and priorities are controlled values.
 - Onboarding creates normal app rows for accounts, income, expenses, debts, savings goals, and planned purchases.
 - The financial plan persists through Supabase.
 - The planning panel is available after onboarding.
