@@ -213,6 +213,41 @@ assert(
   "legacy fixed expense rows must normalize to a closed category"
 );
 
+const quickStart = new Component();
+quickStart.props = { mode: "desktop" };
+quickStart.showToast = () => {};
+quickStart._persist = () => {};
+quickStart.state.currency = "USD";
+quickStart.state.financialPlan = quickStart._mergePlan({
+  onboarding: { completed: false },
+  profile: { main_currency: "USD", pay_frequency: "Bi-hebdomadaire" },
+  lifestyle: { new_income_minor: 530000, baseline_expense_minor: 210000 },
+  structured: {
+    income: [
+      {
+        source: "",
+        amount: "",
+        frequency: "Mensuel",
+        payday: "Variable",
+        income_type: "Fixe",
+      },
+    ],
+  },
+});
+assert(
+  quickStart._obRows("income", quickStart.state.financialPlan).length === 0,
+  "blank structured onboarding rows must be ignored even when selects have defaults"
+);
+quickStart._completeOnboarding();
+assert(quickStart.state.incomes.length === 1, "quick-start onboarding must create one useful income row");
+assert(quickStart.state.incomes[0].source === "Revenu principal", "quick-start income must use a generic label");
+assert(quickStart.state.incomes[0].amount_minor === 530000, "quick-start income must use current monthly income");
+assert(quickStart.state.incomes[0].freq === "Mensuel", "quick-start income must stay monthly to avoid double-counting");
+assert(
+  quickStart.state.incomes[0].note.indexOf("Bi") >= 0,
+  "quick-start income note must preserve the user's payday rhythm"
+);
+
 console.log(
   JSON.stringify(
     {
@@ -226,6 +261,7 @@ console.log(
         "planned purchases",
         "real estate projection",
         "structured onboarding rows",
+        "lightweight onboarding start",
       ],
     },
     null,
