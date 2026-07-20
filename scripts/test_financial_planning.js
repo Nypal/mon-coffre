@@ -212,6 +212,19 @@ assert(
   onboarding._parseObRows("fixedExpenses", "TapTap Send | 200 | 15 | famille")[0].category === "Famille",
   "legacy fixed expense rows must normalize to a closed category"
 );
+assert(onboarding._obDefaultRow("fixedExpenses").day === "1", "fixed expenses must default to a fixed day");
+const fixedDayOptions = onboarding._obFields("fixedExpenses").find((field) => field[0] === "day")[3];
+assert(fixedDayOptions[0] === "1", "fixed expense day selector must start with day 1");
+assert(fixedDayOptions.includes("Variable"), "fixed expense day selector must keep Variable as an explicit option");
+assert(
+  onboarding._parseObRows("fixedExpenses", "Loyer | 792,35")[0].day === "1",
+  "legacy fixed expenses without a day must default to day 1"
+);
+assert(onboarding._renderOnboarding.toString().includes(">Onboarding<"), "onboarding label must be neutral");
+assert(
+  !onboarding._renderOnboarding.toString().includes("Onboarding obligatoire"),
+  "onboarding label must not contradict the skip action"
+);
 
 const quickStart = new Component();
 quickStart.props = { mode: "desktop" };
@@ -248,6 +261,26 @@ assert(
   "quick-start income note must preserve the user's payday rhythm"
 );
 
+const emptyDashboard = new Component();
+emptyDashboard.props = { mode: "desktop" };
+emptyDashboard.state.currency = "USD";
+emptyDashboard.state.accounts = [];
+emptyDashboard.state.incomes = [];
+emptyDashboard.state.expenses = [];
+emptyDashboard.state.savings = [];
+emptyDashboard.state.pots = [];
+emptyDashboard.state.debts = [];
+emptyDashboard.state.loans = [];
+const emptyVals = emptyDashboard.renderVals();
+assert(emptyVals.summaryCards[0].sub === "Ajoute ton premier compte", "empty dashboard must prompt for first account");
+assert(emptyVals.summaryCards[1].sub === "Ajoute ton premier revenu", "empty dashboard must prompt for first income");
+assert(emptyVals.summaryCards[3].sub === "Crée ta première cagnotte", "empty dashboard must prompt for first saving goal");
+assert(emptyVals.summaryCards[4].sub === "Renseigne une dette", "empty dashboard must prompt for debts");
+assert(
+  emptyVals.coachLine.indexOf("premier revenu") >= 0,
+  "empty dashboard coach line must guide the next useful action"
+);
+
 console.log(
   JSON.stringify(
     {
@@ -262,6 +295,8 @@ console.log(
         "real estate projection",
         "structured onboarding rows",
         "lightweight onboarding start",
+        "neutral onboarding label",
+        "dashboard empty-state guidance",
       ],
     },
     null,
