@@ -10,6 +10,7 @@ This repository is the source of truth for Mon Coffre updates.
 - Rebuild the app from source before deployment.
 - Deploy to Cloudflare only after safety checks pass.
 - Keep browser hardening and SDK pinning enforced by CI.
+- Keep GitHub Actions pinned to reviewed commit SHAs.
 
 ## Standard Flow
 
@@ -64,7 +65,8 @@ The `Safety Checks` workflow verifies:
 - rebuild from `frontend/build_mc.py`;
 - generated bundle sanity;
 - Cloudflare Worker package generation;
-- production security hardening checks.
+- production security hardening checks;
+- GitHub Actions SHA pinning.
 
 ## Production Deployment
 
