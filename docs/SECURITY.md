@@ -84,3 +84,9 @@ the provider dashboards:
 
 - Supabase leaked password protection for production Auth;
 - GitHub branch protection and production environment reviewers.
+
+## CI Supply Chain
+
+GitHub Actions are pinned to exact commit SHAs instead of floating version tags.
+Dependabot monitors the workflows weekly so action updates arrive through
+reviewable pull requests.

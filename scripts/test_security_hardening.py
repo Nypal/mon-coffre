@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import sys
 
 
@@ -14,6 +15,10 @@ LOGIC = ROOT / "frontend" / "mc_logic.js"
 WORKER_BUILDER = ROOT / "scripts" / "build_cloudflare_worker.py"
 WRANGLER = ROOT / "cloudflare" / "wrangler.toml"
 GENERATED_WORKER = ROOT / "cloudflare" / "dist" / "server" / "index.js"
+WORKFLOWS = [
+    ROOT / ".github" / "workflows" / "ci.yml",
+    ROOT / ".github" / "workflows" / "deploy-cloudflare.yml",
+]
 
 SUPABASE_SDK_URL = (
     "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/"
@@ -39,6 +44,7 @@ def main() -> int:
     builder = read(WORKER_BUILDER)
     wrangler = read(WRANGLER)
     generated = read(GENERATED_WORKER) if GENERATED_WORKER.exists() else ""
+    workflows = "\n".join(read(path) for path in WORKFLOWS)
 
     require('workers_dev = false' in wrangler, "workers.dev must be disabled", findings)
     require('workers_dev = true' not in wrangler, "workers.dev is still enabled", findings)
@@ -75,6 +81,22 @@ def main() -> int:
     require("_safeImageUrl" in logic, "planned purchase images must be URL-filtered", findings)
     require('referrerpolicy="no-referrer"' in logic, "planned purchase images need no-referrer", findings)
 
+    for action in [
+        "actions/checkout",
+        "actions/setup-python",
+        "actions/setup-node",
+    ]:
+        require(
+            not re.search(rf"uses:\s+{re.escape(action)}@v\d+", workflows),
+            f"{action} must be pinned by commit SHA, not a version tag",
+            findings,
+        )
+        require(
+            re.search(rf"uses:\s+{re.escape(action)}@[0-9a-f]{{40}}\s+#\s+v\d+", workflows),
+            f"{action} must include a pinned SHA with readable version comment",
+            findings,
+        )
+
     if findings:
         print(json.dumps({"ok": False, "findings": findings}, indent=2))
         return 1
@@ -88,6 +110,7 @@ def main() -> int:
                     "Worker security headers configured",
                     "Supabase SDK pinned with SRI",
                     "planned purchase image URLs filtered",
+                    "GitHub Actions pinned by SHA",
                 ],
             },
             indent=2,
