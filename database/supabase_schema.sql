@@ -39,6 +39,45 @@ create table if not exists public.user_financial_plans (
   updated_at              timestamptz not null default now()
 );
 
+-- ---------- Product evaluation: privacy-preserving feature usage ----------
+create table if not exists public.feature_events (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references auth.users(id) on delete cascade,
+  session_id       text not null check (length(session_id) between 8 and 80),
+  feature_id       text not null check (feature_id ~ '^[a-z0-9_.:-]{2,64}$'),
+  event_name       text not null check (event_name in (
+    'feature_viewed',
+    'feature_started',
+    'feature_completed',
+    'feature_skipped',
+    'feature_failed',
+    'feature_feedback'
+  )),
+  page_id          text check (page_id is null or page_id ~ '^[a-z0-9_.:-]{2,64}$'),
+  outcome          text not null default 'info' check (outcome in ('info','started','completed','skipped','failed','feedback')),
+  usefulness_score smallint check (usefulness_score between 1 and 5),
+  friction_score   smallint check (friction_score between 1 and 5),
+  metadata         jsonb not null default '{}'::jsonb,
+  device_mode      text not null default 'unknown' check (device_mode in ('desktop','mobile','unknown')),
+  app_version      text not null default 'web',
+  created_at       timestamptz not null default now(),
+  constraint feature_events_metadata_object check (jsonb_typeof(metadata) = 'object'),
+  constraint feature_events_metadata_size check (length(metadata::text) <= 2000),
+  constraint feature_events_metadata_privacy check (
+    metadata::text !~* '(email|password|secret|token|service_role|amount|merchant|payee|file_path|file_name|creditor|borrower|full_name)'
+  )
+);
+
+create table if not exists public.feature_feedback (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  feature_id    text not null check (feature_id ~ '^[a-z0-9_.:-]{2,64}$'),
+  feedback_type text not null default 'usefulness' check (feedback_type in ('usefulness','friction','missing','bug','idea')),
+  rating        smallint not null check (rating between 1 and 5),
+  reason        text check (reason is null or reason ~ '^[a-z0-9_.:-]{2,80}$'),
+  created_at    timestamptz not null default now()
+);
+
 -- ---------- Accounts / available money ----------
 create table if not exists public.accounts (
   id            uuid primary key default gen_random_uuid(),
@@ -360,6 +399,8 @@ drop function if exists public.rls_auto_enable();
 
 alter table public.users                       enable row level security;
 alter table public.user_financial_plans        enable row level security;
+alter table public.feature_events              enable row level security;
+alter table public.feature_feedback            enable row level security;
 alter table public.accounts                    enable row level security;
 alter table public.income                      enable row level security;
 alter table public.income_attachments          enable row level security;
@@ -411,6 +452,36 @@ begin
   end loop;
 end $$;
 
+drop policy if exists "feature events select own" on public.feature_events;
+create policy "feature events select own" on public.feature_events
+  for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "feature events insert own" on public.feature_events;
+create policy "feature events insert own" on public.feature_events
+  for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "feature events delete own" on public.feature_events;
+create policy "feature events delete own" on public.feature_events
+  for delete to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "feature feedback select own" on public.feature_feedback;
+create policy "feature feedback select own" on public.feature_feedback
+  for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "feature feedback insert own" on public.feature_feedback;
+create policy "feature feedback insert own" on public.feature_feedback
+  for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "feature feedback delete own" on public.feature_feedback;
+create policy "feature feedback delete own" on public.feature_feedback
+  for delete to authenticated
+  using ((select auth.uid()) = user_id);
+
 -- =====================================================================
 -- INDEXES: RLS, keys, and reports
 -- =====================================================================
@@ -426,6 +497,13 @@ create index if not exists idx_income_attachments_income on public.income_attach
 
 create index if not exists idx_user_financial_plans_user on public.user_financial_plans(user_id);
 create index if not exists idx_user_financial_plans_updated on public.user_financial_plans(user_id, updated_at desc);
+
+create index if not exists idx_feature_events_user on public.feature_events(user_id);
+create index if not exists idx_feature_events_user_created on public.feature_events(user_id, created_at desc);
+create index if not exists idx_feature_events_user_feature_created on public.feature_events(user_id, feature_id, created_at desc);
+create index if not exists idx_feature_events_feature_created on public.feature_events(feature_id, created_at desc);
+create index if not exists idx_feature_feedback_user on public.feature_feedback(user_id);
+create index if not exists idx_feature_feedback_user_feature_created on public.feature_feedback(user_id, feature_id, created_at desc);
 
 create index if not exists idx_expenses_user on public.expenses(user_id);
 create index if not exists idx_expenses_account on public.expenses(account_id);
@@ -496,6 +574,11 @@ grant select, insert, update, delete on
   public.loan_repayments,
   public.loan_attachments,
   public.loan_repayment_attachments
+to authenticated;
+
+grant select, insert, delete on
+  public.feature_events,
+  public.feature_feedback
 to authenticated;
 
 -- =====================================================================

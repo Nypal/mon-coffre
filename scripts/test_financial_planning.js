@@ -7,11 +7,14 @@ function assert(condition, message) {
 
 global.window = {};
 global.document = {};
+const localStore = {};
 global.localStorage = {
-  getItem() {
-    return null;
+  getItem(key) {
+    return Object.prototype.hasOwnProperty.call(localStore, key) ? localStore[key] : null;
   },
-  setItem() {},
+  setItem(key, value) {
+    localStore[key] = String(value);
+  },
 };
 global.indexedDB = {
   open() {
@@ -439,6 +442,42 @@ assert(
   "empty dashboard coach line must guide the next useful action"
 );
 
+const evaluation = new Component();
+evaluation.props = { mode: "desktop" };
+evaluation.state.currency = "USD";
+evaluation.state.page = "dashboard";
+const safeMeta = evaluation._evalSafeMeta({
+  source: "nav",
+  amount: "5300",
+  email: "private@example.com",
+  file_path: "user/receipt.png",
+  has_proof: true,
+});
+assert(safeMeta.source === "nav", "product evaluation metadata must keep safe routing context");
+assert(safeMeta.has_proof === true, "product evaluation metadata must keep safe boolean context");
+assert(!Object.prototype.hasOwnProperty.call(safeMeta, "amount"), "product evaluation metadata must drop amounts");
+assert(!Object.prototype.hasOwnProperty.call(safeMeta, "email"), "product evaluation metadata must drop emails");
+assert(!Object.prototype.hasOwnProperty.call(safeMeta, "file_path"), "product evaluation metadata must drop file paths");
+evaluation._trackFeature("debts", "feature_viewed", { source: "nav" });
+evaluation._trackFeature("debts", "feature_started", { kind: "debt" });
+evaluation._trackFeature("debts", "feature_failed", { reason: "validation" });
+evaluation._trackFeature("financial_plan", "feature_viewed", { source: "debts" });
+evaluation._trackFeature("expenses", "feature_completed", { has_account: true, has_proof: false });
+const productEval = evaluation._productEvaluation();
+assert(productEval.eventCount >= 5, "product evaluation must count local usage signals");
+assert(
+  productEval.features.some((feature) => feature.id === "debts" && feature.fails === 1),
+  "product evaluation must aggregate failures by feature"
+);
+assert(
+  productEval.recommendations.some((rec) => rec.priority === "Haute" && rec.title.includes("Dettes")),
+  "product evaluation must recommend fixing failed high-value flows"
+);
+assert(
+  evaluation._productEvaluationHtml().includes("Évaluation automatique du projet"),
+  "financial plan panel must expose the product evaluation report"
+);
+
 console.log(
   JSON.stringify(
     {
@@ -456,6 +495,7 @@ console.log(
         "lightweight onboarding start",
         "neutral onboarding label",
         "dashboard empty-state guidance",
+        "privacy-preserving product evaluation",
       ],
     },
     null,
