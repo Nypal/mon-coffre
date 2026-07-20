@@ -710,7 +710,7 @@ class Component extends DCLogic {
       return row;
     });
   }
-  _obRows(kind, plan){
+  _obRows(kind, plan, keepDrafts){
     var self=this, p=this._mergePlan(plan||this._plan()), s=(p.structured&&p.structured[kind])||[];
     function clean(x){
       var row=Object.assign(self._obDefaultRow(kind),x||{});
@@ -722,7 +722,10 @@ class Component extends DCLogic {
       if(kind==="plannedPurchases"){ row.priority=self._obPriority(row.priority); row.image_url=self._safeImageUrl(row.image_url); }
       return row;
     }
-    if(Array.isArray(s) && s.length) return s.map(clean).filter(function(row){ return self._obRowHasMeaning(kind,row); });
+    if(Array.isArray(s) && s.length){
+      var rows=s.map(clean);
+      return keepDrafts?rows:rows.filter(function(row){ return self._obRowHasMeaning(kind,row); });
+    }
     return this._parseObRows(kind,(p.raw&&p.raw[kind])||"");
   }
   _obSerialize(kind, rows){
@@ -785,14 +788,14 @@ class Component extends DCLogic {
     });
     return html+'</div></section>';
   }
-  _collectObRows(kind){
+  _collectObRows(kind, keepDrafts){
     var self=this, nodes=document.querySelectorAll('[data-ob-kind="'+kind+'"][data-ob-key]'), by={};
     Array.prototype.forEach.call(nodes,function(el){
       var i=String(el.getAttribute("data-ob-index")||"0"), k=el.getAttribute("data-ob-key");
       by[i]=by[i]||{}; by[i][k]=String(el.value||"").trim();
     });
     return Object.keys(by).sort(function(a,b){return Number(a)-Number(b);}).map(function(i){ return by[i]; }).filter(function(r){
-      return self._obRowHasMeaning(kind,r);
+      return keepDrafts||self._obRowHasMeaning(kind,r);
     });
   }
   _obRowsError(kind, rows, allowEmpty){
@@ -1411,19 +1414,19 @@ class Component extends DCLogic {
       body+='<p style="margin:0 0 13px;color:#5A6B78;font-size:12.5px;line-height:1.45">Avec ces infos, Mon Coffre peut déjà estimer ton argent disponible chaque mois et repérer si tes dépenses montent avec ton revenu.</p>';
       body+=this._fieldHtml("ob_name","Nom affiché optionnel",p.profile.display_name,"Ex : Paul");
       body+='<details style="margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">J’ai récemment eu un changement de revenu</summary><div style="margin-top:10px">'+this._fieldHtml("ob_old_income","Revenu mensuel avant changement",this._plain(life.old_income_minor||0,p.profile.main_currency||"USD"),"Ex : 3000","text")+this._fieldHtml("ob_change","Date du changement",life.change_date||"","Ex : 2026-07-01","text")+'</div></details>';
-      body+='<details style="margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">Détailler mes sources de revenus</summary><div style="margin-top:10px">'+this._obRepeatHtml("income","Sources de revenus",this._obRows("income",p),"+ Ajouter une source","Ajoute une source seulement si tu veux détailler InvenTech, DoorDash, Concierge, etc.")+'</div></details>';
+      body+='<details style="margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">Détailler mes sources de revenus</summary><div style="margin-top:10px">'+this._obRepeatHtml("income","Sources de revenus",this._obRows("income",p,true),"+ Ajouter une source","Ajoute une source seulement si tu veux détailler InvenTech, DoorDash, Concierge, etc.")+'</div></details>';
     } else if(step===1){
-      body+=this._obRepeatHtml("accounts","Comptes",this._obRows("accounts",p),"+ Ajouter un compte","Le rôle vient d'une liste fermée pour que le coussin, l'épargne et les dépenses soient reconnus automatiquement.");
+      body+=this._obRepeatHtml("accounts","Comptes",this._obRows("accounts",p,true),"+ Ajouter un compte","Le rôle vient d'une liste fermée pour que le coussin, l'épargne et les dépenses soient reconnus automatiquement.");
     } else if(step===2){
-      body+=this._obRepeatHtml("fixedExpenses","Dépenses fixes",this._obRows("fixedExpenses",p),"+ Ajouter une dépense","Ajoute au moins une dépense fixe, ou passe si aucune ne s'applique.");
+      body+=this._obRepeatHtml("fixedExpenses","Dépenses fixes",this._obRows("fixedExpenses",p,true),"+ Ajouter une dépense","Ajoute au moins une dépense fixe, ou passe si aucune ne s'applique.");
     } else if(step===3){
       body+=this._fieldHtml("ob_debt_budget","Budget mensuel total dettes",this._plain(snow.monthly_budget_minor||0,p.profile.main_currency||"USD"),"Ex : 300","text");
-      body+=this._obRepeatHtml("debts","Dettes",this._obRows("debts",p),"+ Ajouter une dette","Ajoute tes dettes pour activer la boule de neige, ou passe si tu n'en as pas.");
+      body+=this._obRepeatHtml("debts","Dettes",this._obRows("debts",p,true),"+ Ajouter une dette","Ajoute tes dettes pour activer la boule de neige, ou passe si tu n'en as pas.");
     } else if(step===4){
       body+=this._fieldHtml("ob_emergency","Coussin de sécurité cible",this._plain((p.emergency_target_minor||0),p.profile.main_currency||"USD"),"Ex : 800","text");
       body+=this._selectHtml("ob_seq","Mode de financement",fund.mode||"sequential",[{value:"sequential",label:"Séquentiel : un objectif à la fois"},{value:"parallel",label:"Parallèle"}]);
-      body+=this._obRepeatHtml("goals","Objectifs / cagnottes",this._obRows("goals",p),"+ Ajouter un objectif","Ajoute une cagnotte ou un objectif d'épargne, ou passe si tu veux compléter plus tard.");
-      body+=this._obRepeatHtml("plannedPurchases","Achats planifiés",this._obRows("plannedPurchases",p),"+ Ajouter un achat","Planifie un achat cash anti-Klarna, ou laisse vide si aucun achat n'est prévu.");
+      body+=this._obRepeatHtml("goals","Objectifs / cagnottes",this._obRows("goals",p,true),"+ Ajouter un objectif","Ajoute une cagnotte ou un objectif d'épargne, ou passe si tu veux compléter plus tard.");
+      body+=this._obRepeatHtml("plannedPurchases","Achats planifiés",this._obRows("plannedPurchases",p,true),"+ Ajouter un achat","Planifie un achat cash anti-Klarna, ou laisse vide si aucun achat n'est prévu.");
       body+=this._selectHtml("ob_re_status","Projet immobilier",re.status||"not_yet",[{value:"yes",label:"Oui"},{value:"not_yet",label:"Pas encore"},{value:"no",label:"Non"}]);
       body+=this._fieldHtml("ob_re_price","Prix cible optionnel",this._plain(re.target_price_minor||0,p.profile.main_currency||"USD"),"Ex : 230000","text");
       body+=this._fieldHtml("ob_re_rate","Taux estimé (%)",String((re.rate_bps||700)/100).replace(".",","),"Ex : 7","text");
@@ -1442,7 +1445,7 @@ class Component extends DCLogic {
     next.onclick=function(){ var err=self._saveOnboardingStep(step,false); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
     el.onclick=function(e){
       var b=e.target && e.target.closest ? e.target.closest("[data-ob-action]") : null; if(!b) return;
-      var kind=b.getAttribute("data-ob-kind"), action=b.getAttribute("data-ob-action"), plan=self._plan(), rows=self._collectObRows(kind);
+      var kind=b.getAttribute("data-ob-kind"), action=b.getAttribute("data-ob-action"), plan=self._plan(), rows=self._collectObRows(kind,true);
       if(action==="add") rows.push(self._obDefaultRow(kind));
       if(action==="remove") rows.splice(Number(b.getAttribute("data-ob-index"))||0,1);
       plan.structured=plan.structured||{}; plan.structured[kind]=rows; if(plan.raw) plan.raw[kind]=self._obSerialize(kind,rows);
