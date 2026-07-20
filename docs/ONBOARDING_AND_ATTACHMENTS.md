@@ -38,7 +38,7 @@ Any repeatable financial data must use structured rows, not fragile free-text fo
    - repeatable fixed expense rows:
      - name;
      - amount;
-     - day of month or variable;
+     - day of month, defaulting to day `1`; `Variable` remains available for irregular expenses;
      - category: `Logement`, `Famille`, `Abonnement`, `Transport`, or `Autre`.
 
 4. Debts
@@ -211,9 +211,12 @@ database/migrations/20260719_onboarding_modules_v1.sql
 - A new confirmed cloud user cannot enter the application until onboarding is complete.
 - The onboarding flow provides a real skip action for non-applicable sections.
 - The first onboarding screen stays lightweight: current monthly income, currency, payday rhythm, and usual spending first; detailed income sources and income-change history are optional.
+- The onboarding eyebrow is neutral (`Onboarding`) so it does not contradict the skip action.
 - Repeatable onboarding inputs use structured rows with add/remove controls.
+- Fixed expenses default to a fixed day selector rather than `Variable`.
 - Users are not asked to type `Aucun`.
 - Account roles, income frequencies, income types, fixed expense categories, and priorities are controlled values.
+- Empty dashboard cards use action-oriented prompts instead of fictional counters.
 - Onboarding creates normal app rows for accounts, income, expenses, debts, savings goals, and planned purchases.
 - The financial plan persists through Supabase.
 - The planning panel is available after onboarding.

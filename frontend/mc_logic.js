@@ -158,7 +158,7 @@ class Component extends DCLogic {
       {id:"p3", name:"Vélo",         target_amount_minor:50000,  current_amount_minor:30000, currency:"USD", date:"Nov 2026",   priority:"Basse",   status:"En cours"}
     ],
     debts: [
-      {id:"d1", name:"Dette voiture",    creditor:"Concessionnaire Auto", total_amount_minor:250000, paid_amount_minor:80000, currency:"USD", due:"15 juil 2026", status:"À jour"},
+      {id:"d1", name:"Dette voiture",    creditor:"Concessionnaire Auto", total_amount_minor:250000, paid_amount_minor:80000, currency:"USD", due:"15 août 2026", status:"À jour"},
       {id:"d2", name:"Prêt téléphone",   creditor:"MobileStore",          total_amount_minor:40000,  paid_amount_minor:40000, currency:"USD", due:"—",            status:"Soldée"},
       {id:"d3", name:"Carte de crédit",  creditor:"Banque",               total_amount_minor:30000,  paid_amount_minor:10000, currency:"USD", due:"3 juil 2026",  status:"En retard"}
     ],
@@ -343,6 +343,11 @@ class Component extends DCLogic {
     let totalDebt=0; deb.forEach(d=>{ if(self._same(d)) totalDebt+=Math.max(0,d.total_amount_minor-d.paid_amount_minor); });
     let totalLent=0; loa.forEach(l=>{ if(self._same(l)) totalLent+=Math.max(0,l.amount_lent_minor-l.amount_repaid_minor); });
     const net=monthIncome-monthExpense;
+    const accCount=acc.filter(a=>self._same(a)).length, incCount=inc.filter(i=>self._same(i)).length, expCount=exp.filter(e=>self._same(e)).length;
+    const savCount=sav.filter(g=>self._same(g)).length, potCount=pot.filter(g=>self._same(g)).length, debCount=deb.filter(d=>self._same(d)).length, loanCount=loa.filter(l=>self._same(l)).length;
+    const hasUserData=!!(accCount||incCount||expCount||savCount||potCount||debCount||loanCount);
+    const plural=(n,s,p)=>n+" "+(n>1?p:s);
+    const coachLine=!hasUserData?"Ajoute ton premier revenu pour commencer.":(!incCount?"Ajoute ton premier revenu pour calculer ton argent disponible.":(!expCount?"Ajoute une dépense fixe pour rendre ton plan plus précis.":"Tu avances bien ce mois-ci. Ton coffre est stable."));
 
     const navList=this.navMeta().map(n=>{ const active=page===n.id; return {label:n.label,icon:n.icon,onClick:()=>this.go(n.id),
       style:{display:"flex",alignItems:"center",gap:"12px",padding:"11px 12px",borderRadius:"12px",width:"100%",textAlign:"left",cursor:"pointer",fontSize:"14px",fontWeight:active?700:600,transition:"background .15s",background:active?C.brandBg:"transparent",color:active?C.brand:C.ink2},
@@ -356,12 +361,12 @@ class Component extends DCLogic {
     const menuItems=menuMeta.map(m=>({label:m.label,icon:m.icon,onClick:()=>this.go(m.id),iconStyle:this.iconBox(m.c,m.b,42)}));
 
     const scMeta=[
-      {label:"Argent disponible",value:this.mFmt(totalAvailable,cur),icon:this.ICONS.wallet,c:C.green,b:C.greenBg,sub:"2 comptes actifs",page:"available"},
-      {label:"Revenus du mois",value:this.mFmt(monthIncome,cur),icon:this.ICONS.income,c:C.brand,b:C.brandBg,sub:"Juillet",page:"income"},
-      {label:"Dépenses du mois",value:this.mFmt(monthExpense,cur),icon:this.ICONS.expense,c:C.gold,b:C.goldBg,sub:"Juillet",page:"expenses"},
-      {label:"Épargne totale",value:this.mFmt(totalSavings,cur),icon:this.ICONS.savings,c:C.green,b:C.greenBg,sub:"3 objectifs",page:"savings"},
-      {label:"Dettes restantes",value:this.mFmt(totalDebt,cur),icon:this.ICONS.debts,c:C.danger,b:C.dangerBg,sub:"à rembourser",page:"debts"},
-      {label:"Prêté à récupérer",value:this.mFmt(totalLent,cur),icon:this.ICONS.loans,c:C.brand,b:C.brandBg,sub:"2 personnes",page:"loans"}
+      {label:"Argent disponible",value:this.mFmt(totalAvailable,cur),icon:this.ICONS.wallet,c:C.green,b:C.greenBg,sub:accCount?plural(accCount,"compte actif","comptes actifs"):"Ajoute ton premier compte",page:"available"},
+      {label:"Revenus du mois",value:this.mFmt(monthIncome,cur),icon:this.ICONS.income,c:C.brand,b:C.brandBg,sub:incCount?"Ce mois-ci":"Ajoute ton premier revenu",page:"income"},
+      {label:"Dépenses du mois",value:this.mFmt(monthExpense,cur),icon:this.ICONS.expense,c:C.gold,b:C.goldBg,sub:expCount?"Ce mois-ci":"Ajoute ta première dépense",page:"expenses"},
+      {label:"Épargne totale",value:this.mFmt(totalSavings,cur),icon:this.ICONS.savings,c:C.green,b:C.greenBg,sub:(savCount||potCount)?plural(savCount+potCount,"objectif","objectifs"):"Crée ta première cagnotte",page:"savings"},
+      {label:"Dettes restantes",value:this.mFmt(totalDebt,cur),icon:this.ICONS.debts,c:C.danger,b:C.dangerBg,sub:debCount?"À rembourser":"Renseigne une dette",page:"debts"},
+      {label:"Prêté à récupérer",value:this.mFmt(totalLent,cur),icon:this.ICONS.loans,c:C.brand,b:C.brandBg,sub:loanCount?plural(loanCount,"personne","personnes"):"Ajoute un prêt",page:"loans"}
     ];
     const summaryCards=scMeta.map(c=>({label:c.label,value:c.value,icon:c.icon,sub:c.sub,onClick:()=>this.go(c.page),iconStyle:this.iconBox(c.c,c.b,38)}));
 
@@ -398,10 +403,10 @@ class Component extends DCLogic {
       pLogin: page==="login", inApp: page!=="login",
       pDash: page==="dashboard", pAvail: page==="available", pInc: page==="income", pExp: page==="expenses",
       pSave: page==="savings", pPots: page==="pots", pDebts: page==="debts", pLoans: page==="loans", pReports: page==="reports", pSettings: page==="settings",
-      pageTitle:this.titleOf(page), dateStr:"5 juillet 2026", name:"NYPAL", avatar:"NY",
-      greetHi:"Bonjour, NYPAL", coachLine:"Tu avances bien ce mois-ci. Ton coffre est stable.",
+      pageTitle:this.titleOf(page), dateStr:new Intl.DateTimeFormat("fr-FR",{day:"numeric",month:"long",year:"numeric"}).format(new Date()), name:"NYPAL", avatar:"NY",
+      greetHi:"Bonjour, NYPAL", coachLine:coachLine,
       mobileTitle: page==="dashboard"?"Bonjour, NYPAL":this.titleOf(page),
-      mobileSub: page==="dashboard"?"Tu avances bien ce mois-ci.":"Mon Coffre",
+      mobileSub: page==="dashboard"?coachLine:"Mon Coffre",
       navList, curList, tabList, menuItems, curSym:this.curSym(),
       openAdd:()=>this.openAdd(), closeAdd:()=>this.closeAdd(), toggleMenu:()=>this.toggleMenu(), logout:()=>this.logout(), ping:()=>this.ping(),
       onLogin:()=>this.login("signin"), goPots:()=>this.go("pots"), goDebts:()=>this.go("debts"),
@@ -644,9 +649,10 @@ class Component extends DCLogic {
     return this._moneyInput(m?m[0]:"", cur||this.state.currency);
   }
   _numInput(v){ return Number(String(v||"").replace(",",".").replace(/[^0-9.-]/g,""))||0; }
-  _obDayOptions(){
-    var opts=["Variable"]; for(var i=1;i<=31;i++) opts.push(String(i));
-    return opts.concat(["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]);
+  _obDayOptions(variableFirst){
+    var nums=[]; for(var i=1;i<=31;i++) nums.push(String(i));
+    var weekdays=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+    return variableFirst ? ["Variable"].concat(nums,weekdays) : nums.concat(["Variable"],weekdays);
   }
   _obClosed(v, allowed, fallback){
     var s=String(v||"").trim().toLowerCase();
@@ -684,7 +690,7 @@ class Component extends DCLogic {
     var m={
       income:{source:"",amount:"",frequency:"Mensuel",payday:"Variable",income_type:"Fixe"},
       accounts:{name:"",balance:"",role:"Dépenses"},
-      fixedExpenses:{name:"",amount:"",day:"Variable",category:"Logement"},
+      fixedExpenses:{name:"",amount:"",day:"1",category:"Logement"},
       debts:{name:"",balance:"",minimum:"",apr:"0",due:"Variable"},
       goals:{name:"",target:"",date:"",priority:"Moyenne"},
       plannedPurchases:{name:"",price:"",schedule:"",priority:"Moyenne",image_url:""}
@@ -697,7 +703,7 @@ class Component extends DCLogic {
       var a=self._parts(line), row=self._obDefaultRow(kind);
       if(kind==="income") return {source:a[0]||"",amount:a[1]||"",frequency:self._obFreq(a[2]),payday:a[3]||"Variable",income_type:self._obIncomeType(a[4])};
       if(kind==="accounts") return {name:a[0]||"",balance:a[1]||"",role:self._obRole(a[2])};
-      if(kind==="fixedExpenses") return {name:a[0]||"",amount:a[1]||"",day:a[2]||"Variable",category:self._obCategory(a[3])};
+      if(kind==="fixedExpenses") return {name:a[0]||"",amount:a[1]||"",day:a[2]||"1",category:self._obCategory(a[3])};
       if(kind==="debts") return {name:a[0]||"",balance:a[1]||"",minimum:a[2]||"",apr:a[3]||"0",due:a[4]||"Variable"};
       if(kind==="goals") return {name:a[0]||"",target:a[1]||"",date:a[2]||"",priority:self._obPriority(a[3])};
       if(kind==="plannedPurchases") return {name:a[0]||"",price:a[1]||"",schedule:a[2]||"",priority:self._obPriority(a[3]),image_url:self._safeImageUrl(a[4])};
@@ -710,7 +716,7 @@ class Component extends DCLogic {
       var row=Object.assign(self._obDefaultRow(kind),x||{});
       if(kind==="accounts") row.role=self._obRole(row.role);
       if(kind==="income"){ row.frequency=self._obFreq(row.frequency); row.income_type=self._obIncomeType(row.income_type); row.payday=row.payday||"Variable"; }
-      if(kind==="fixedExpenses"){ row.day=row.day||"Variable"; row.category=self._obCategory(row.category); }
+      if(kind==="fixedExpenses"){ row.day=row.day||"1"; row.category=self._obCategory(row.category); }
       if(kind==="debts") row.due=row.due||"Variable";
       if(kind==="goals") row.priority=self._obPriority(row.priority);
       if(kind==="plannedPurchases"){ row.priority=self._obPriority(row.priority); row.image_url=self._safeImageUrl(row.image_url); }
@@ -732,11 +738,11 @@ class Component extends DCLogic {
     }).filter(Boolean).join("\n");
   }
   _obFields(kind){
-    var day=this._obDayOptions();
+    var day=this._obDayOptions(true), fixedDay=this._obDayOptions(false);
     var fields={
       income:[["source","Nom de la source","text","InvenTech"],["amount","Montant","money","3200"],["frequency","Fréquence","select",["Hebdomadaire","Bi-hebdomadaire","Mensuel","Variable"]],["payday","Jour de paie","select",day],["income_type","Type","select",["Fixe","Variable"]]],
       accounts:[["name","Nom de la banque","text","Amegy"],["balance","Solde actuel","money","1200"],["role","Rôle","select",["Dépenses","Coussin de sécurité","Épargne","Autre"]]],
-      fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",day],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Autre"]]],
+      fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",fixedDay],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Autre"]]],
       debts:[["name","Dette / créancier","text","CC1"],["balance","Solde","money","500"],["minimum","Minimum mensuel","money","25"],["apr","Taux %","text","24,9"],["due","Jour d'échéance","select",day]],
       goals:[["name","Objectif","text","Épargne décembre"],["target","Montant cible","money","10000"],["date","Date cible","text","2026-12-31"],["priority","Priorité","select",["Haute","Moyenne","Basse"]]],
       plannedPurchases:[["name","Objet","text","MacBook"],["price","Prix","money","900"],["schedule","Date ou contribution","text","2026-11-01 ou 75/semaine"],["priority","Priorité","select",["Haute","Moyenne","Basse"]],["image_url","Image optionnelle","text","https://..."]]
@@ -805,7 +811,7 @@ class Component extends DCLogic {
       } else if(kind==="fixedExpenses"){
         if(!r.name) return "Dépense "+n+" : indique le nom.";
         if(this._moneyInput(r.amount,this.state.currency)<=0) return "Dépense "+n+" : indique un montant.";
-        r.day=r.day||"Variable"; r.category=this._obCategory(r.category);
+        r.day=r.day||"1"; r.category=this._obCategory(r.category);
       } else if(kind==="debts"){
         if(!r.name) return "Dette "+n+" : indique le nom.";
         if(this._moneyInput(r.balance,this.state.currency)<=0) return "Dette "+n+" : indique le solde.";
@@ -1196,7 +1202,7 @@ class Component extends DCLogic {
         {key:"creditor",label:"Créancier",type:"text",required:true,placeholder:"À qui dois-tu cet argent ?"},
         {key:"total",label:"Montant total",type:"amount",required:true},
         {key:"paid",label:"Déjà payé",type:"number",value:"0"},
-        {key:"due",label:"Prochaine échéance",type:"text",opt:true,placeholder:"Ex : 15 juil 2026"}
+        {key:"due",label:"Prochaine échéance",type:"text",opt:true,placeholder:"Ex : 15 août 2026"}
       ]);
       this._mcModal("Ajouter une dette", Fd.el, function(){
         var v=Fd.values(); if(!v.name) return "Indique un nom."; if(!v.creditor) return "Indique le créancier.";
@@ -1429,7 +1435,7 @@ class Component extends DCLogic {
       body+=this._selectHtml("ob_review","Bilan mensuel automatique",rev.enabled===false?"no":"yes",[{value:"yes",label:"Oui"},{value:"no",label:"Non"}]);
     }
     el.style.cssText="position:fixed;inset:0;z-index:9800;background:rgba(243,244,241,.98);display:flex;align-items:center;justify-content:center;padding:18px;"+this._plannerStyle();
-    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Personnalise ton coffre</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
+    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Onboarding</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
     var back=el.querySelector("#mc-ob-back"), skip=el.querySelector("#mc-ob-skip"), next=el.querySelector("#mc-ob-next");
     back.onclick=function(){ if(step>0){ p.onboarding.step=step-1; self._setPlan(p); } };
     skip.onclick=function(){ var err=self._saveOnboardingStep(step,true); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
