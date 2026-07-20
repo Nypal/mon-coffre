@@ -27,6 +27,7 @@ The project demonstrates:
 - Receipt and document attachment support through a private Storage bucket.
 - Mandatory first-run onboarding for cloud users.
 - Planning modules for lifestyle inflation, debt snowball payoff, sequential goal funding, monthly reviews, planned purchases, and optional real estate projections.
+- Privacy-preserving product evaluation that turns real usage into prioritized update recommendations.
 - Desktop and mobile layouts.
 - Cloud-ready persistence with local fallback architecture.
 
@@ -69,6 +70,7 @@ docs/
   DEPLOYMENT.md                   Deployment notes
   RELEASE_PROCESS.md              Secure GitHub-to-production process
   ONBOARDING_AND_ATTACHMENTS.md   Product specification for onboarding and receipts
+  PRODUCT_EVALUATION.md           Usage analysis and update recommendation engine
   VALIDATION.md                   Validation summary
 ```
 
@@ -97,6 +99,7 @@ Production uses only a Supabase publishable key in the browser. Data protection 
 - Storage policy validation: passed
 - Production auth/cloud smoke tests: passed
 - Mandatory onboarding and planning modules: implemented on feature branch
+- Product evaluation engine: implemented with local fallback and Supabase migration
 - Remaining dashboard advisory: leaked password protection can be enabled from Supabase Auth settings
 
 ## Update Process

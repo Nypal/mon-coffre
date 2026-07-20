@@ -77,6 +77,25 @@ Planned-purchase images are filtered before rendering. The app accepts only
 HTTPS image URLs and base64 PNG/JPEG/WEBP data URLs, and renders them with
 `referrerpolicy="no-referrer"`.
 
+## Product Evaluation Privacy
+
+The product evaluation engine records feature-level usage only. It is designed
+to answer questions such as "which module blocks users?" without collecting
+financial content.
+
+Evaluation events must not contain:
+
+- email addresses;
+- passwords;
+- keys or tokens;
+- financial amounts;
+- merchant, bank, creditor, borrower, or payee names;
+- file paths, file names, or free-form notes.
+
+The frontend sanitizes metadata before storage or cloud sync. The Supabase
+schema also rejects sensitive metadata patterns and protects evaluation tables
+with per-user RLS policies.
+
 ## Dashboard Controls
 
 Two security controls live outside this repository and must be kept enabled in

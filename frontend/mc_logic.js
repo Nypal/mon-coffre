@@ -21,6 +21,8 @@ class Component extends DCLogic {
   _KEY    = "moncoffre.local.v2";
   _KEY_V1 = "moncoffre.local.v1";
   _KEY_BK = "moncoffre.local.v1.backup";
+  _EVAL_KEY = "moncoffre.product.eval.v1";
+  _APP_VERSION = "web-2026-07-20";
 
   /* ---------- Money core ---------- */
   MONEY = {
@@ -207,7 +209,11 @@ class Component extends DCLogic {
   bar(pctNum, color){ return {height:"100%",width:pctNum+"%",background:color,borderRadius:"99px",animation:"mcBar .9s cubic-bezier(.3,.8,.3,1) both"}; }
   iconBox(c,b,size){ const s=size||38; return {width:s+"px",height:s+"px",borderRadius:"11px",background:b,color:c,display:"flex",alignItems:"center",justifyContent:"center",flex:"none"}; }
 
-  go(p){ this.setState({page:p, menuOpen:false, addOpen:false}); }
+  go(p){
+    var next=String(p||"dashboard");
+    if(next!=="login") this._trackFeature(next,"feature_viewed",{source:"nav"});
+    this.setState({page:next, menuOpen:false, addOpen:false});
+  }
   closeAdd(){ this.setState({addOpen:false}); }
   toggleMenu(){ this.setState(s=>({menuOpen:!s.menuOpen})); }
   logout(){
@@ -333,6 +339,7 @@ class Component extends DCLogic {
   openAdd(){
     var p=this.state.page;
     var map={available:"account", income:"income", savings:"saving", pots:"pot", debts:"debt", loans:"loan"};
+    this._trackFeature("quick_add","feature_started",{source:p});
     this.setState({menuOpen:false});
     if(map[p]) this.openForm(map[p]); else this.setState({addOpen:true, menuOpen:false});
   }
@@ -377,6 +384,7 @@ class Component extends DCLogic {
       if(files.length){ self._saveFiles("expense:"+id, files).then(function(n){ if(n) self.showToast("ok","Preuve jointe à la dépense."); }); }
     });
     this._pendingProofs=[];
+    this._trackFeature("expenses","feature_completed",{source:"quick_add",has_account:!!f.account,has_proof:!!files.length});
     this.showToast("ok","Cette dépense a été enregistrée.");
   }
 
@@ -557,6 +565,170 @@ class Component extends DCLogic {
     if(/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(s)) return s;
     return "";
   }
+  _evalSlug(v, fallback){
+    var s=String(v||fallback||"").toLowerCase().replace(/[^a-z0-9_.:-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,64);
+    return s || String(fallback||"feature");
+  }
+  _evalOutcome(eventName){
+    var e=String(eventName||"");
+    if(e.includes("started")) return "started";
+    if(e.includes("completed")) return "completed";
+    if(e.includes("skipped")) return "skipped";
+    if(e.includes("failed")) return "failed";
+    if(e.includes("feedback")) return "feedback";
+    return "info";
+  }
+  _evalFeatureForForm(kind){
+    var map={account:"available",income:"income",saving:"savings",saveAdd:"savings",pot:"pots",potAdd:"pots",debt:"debts",debtPay:"debts",loan:"loans",loanFollow:"loans"};
+    return map[kind]||"quick_add";
+  }
+  _evalSafeMeta(meta){
+    var allowed={source:1,kind:1,step:1,screen:1,result:1,reason:1,mode:1,has_account:1,has_proof:1,strategy:1,currency:1,section:1,action:1};
+    var blocked=/(email|password|secret|token|service|amount|merchant|payee|file|path|name|creditor|borrower|note)/i;
+    var out={};
+    Object.keys(meta||{}).forEach(function(k){
+      if(!allowed[k] || blocked.test(k)) return;
+      var v=meta[k];
+      if(v==null) return;
+      if(typeof v==="boolean"){ out[k]=v; return; }
+      if(typeof v==="number" && isFinite(v)){ out[k]=Math.round(v); return; }
+      var s=String(v).slice(0,80);
+      if(!blocked.test(s)) out[k]=s;
+    });
+    return out;
+  }
+  _evalSessionId(){
+    var key="moncoffre.eval.session";
+    try{
+      if(typeof sessionStorage!=="undefined"){
+        var cur=sessionStorage.getItem(key);
+        if(cur) return cur;
+        var id=this._uid();
+        sessionStorage.setItem(key,id);
+        return id;
+      }
+    }catch(e){ this._evalSessionStorageUnavailable=true; }
+    if(!this._evalSession) this._evalSession=this._uid();
+    return this._evalSession;
+  }
+  _evalStoreKey(){
+    var uid=(this._cloudUser&&this._cloudUser.id)?this._cloudUser.id:"local";
+    return this._EVAL_KEY+"."+uid;
+  }
+  _evalReadEvents(){
+    try{
+      var raw=localStorage.getItem(this._evalStoreKey());
+      var rows=raw?JSON.parse(raw):[];
+      return Array.isArray(rows)?rows:[];
+    }catch(e){ return []; }
+  }
+  _evalStoreEvent(row){
+    try{
+      var rows=this._evalReadEvents();
+      rows.push(row);
+      if(rows.length>500) rows=rows.slice(rows.length-500);
+      localStorage.setItem(this._evalStoreKey(), JSON.stringify(rows));
+    }catch(e){ this._evalLocalStorageDisabled=true; }
+  }
+  _cloudInsertFeatureEvent(row){
+    var self=this;
+    if(!this._cloudEnabled() || !this._cloudReady() || !this._cloudUser || this._featureEventsCloudDisabled) return Promise.resolve(false);
+    var cloudRow=Object.assign({},row,{user_id:this._cloudUser.id});
+    return this.sb.from("feature_events").insert([cloudRow]).then(function(r){
+      if(r.error) throw r.error;
+      return true;
+    }).catch(function(e){
+      var msg=String((e&&(e.message||e.code||e.details))||"");
+      if(msg.includes("feature_events") || msg.includes("PGRST205") || msg.includes("42P01")){
+        self._featureEventsCloudDisabled=true;
+        return false;
+      }
+      self._cloudHandleError("featureEvent", e);
+      return false;
+    });
+  }
+  _trackFeature(featureId, eventName, meta){
+    try{
+      var row={
+        id:this._uid(),
+        session_id:this._evalSessionId(),
+        feature_id:this._evalSlug(featureId,"feature"),
+        event_name:this._evalSlug(eventName,"feature_viewed"),
+        page_id:this._evalSlug((this.state&&this.state.page)||"dashboard","dashboard"),
+        outcome:this._evalOutcome(eventName),
+        metadata:this._evalSafeMeta(meta||{}),
+        device_mode:this.mode==="mobile"?"mobile":"desktop",
+        app_version:this._APP_VERSION,
+        created_at:new Date().toISOString()
+      };
+      this._evalStoreEvent(row);
+      this._cloudInsertFeatureEvent(row);
+      return row;
+    }catch(e){ return null; }
+  }
+  _featureRegistry(){
+    return [
+      {id:"dashboard",label:"Tableau de bord",goal:"Comprendre la situation en moins d'une minute."},
+      {id:"available",label:"Argent disponible",goal:"Savoir combien reste vraiment utilisable."},
+      {id:"income",label:"Revenus",goal:"Suivre les sources d'argent."},
+      {id:"expenses",label:"Dépenses",goal:"Enregistrer et expliquer les sorties d'argent."},
+      {id:"savings",label:"Épargne",goal:"Avancer sur le coussin de sécurité."},
+      {id:"pots",label:"Cagnottes",goal:"Financer les projets sans dette."},
+      {id:"debts",label:"Dettes",goal:"Choisir quoi payer en premier."},
+      {id:"loans",label:"Argent prêté",goal:"Suivre les remboursements reçus."},
+      {id:"reports",label:"Rapports",goal:"Voir l'évolution mensuelle."},
+      {id:"onboarding",label:"Onboarding",goal:"Configurer vite sans jargon."},
+      {id:"quick_add",label:"Ajout rapide",goal:"Créer une ligne sans friction."},
+      {id:"financial_plan",label:"Plan financier",goal:"Transformer les données en décisions."}
+    ];
+  }
+  _productEvaluation(){
+    var events=this._evalReadEvents(), by={}, registry=this._featureRegistry();
+    registry.forEach(function(f){ by[f.id]={id:f.id,label:f.label,goal:f.goal,views:0,starts:0,completes:0,skips:0,fails:0,last:null,score:0}; });
+    events.forEach(function(e){
+      var id=String(e.feature_id||"feature");
+      if(!by[id]) by[id]={id:id,label:id,goal:"Module suivi automatiquement.",views:0,starts:0,completes:0,skips:0,fails:0,last:null,score:0};
+      if(e.event_name==="feature_viewed") by[id].views++;
+      if(e.event_name==="feature_started") by[id].starts++;
+      if(e.event_name==="feature_completed") by[id].completes++;
+      if(e.event_name==="feature_skipped") by[id].skips++;
+      if(e.event_name==="feature_failed") by[id].fails++;
+      by[id].last=e.created_at||by[id].last;
+    });
+    var features=Object.keys(by).map(function(k){
+      var f=by[k], attempts=f.starts+f.completes+f.skips+f.fails, completion=attempts?Math.round(f.completes/attempts*100):0;
+      var usage=Math.min(50,(f.views*4)+(f.starts*8)+(f.completes*12));
+      var quality=attempts?Math.max(0,50+completion/2-(f.fails*12)-(f.skips*4)):(f.views?32:0);
+      f.completion=completion;
+      f.score=Math.max(0,Math.min(100,Math.round(usage+quality)));
+      return f;
+    }).sort(function(a,b){ return b.score-a.score || b.views-a.views; });
+    return {features:features,recommendations:this._productRecommendations(features,events),eventCount:events.length};
+  }
+  _productRecommendations(features, events){
+    var recs=[];
+    features.forEach(function(f){
+      var attempts=f.starts+f.completes+f.skips+f.fails;
+      if(f.fails>0) recs.push({priority:"Haute",title:"Corriger les erreurs sur "+f.label,detail:f.fails+" échec(s) détecté(s). Vérifier ce parcours avant d'ajouter une nouvelle fonctionnalité."});
+      if(attempts>=2 && f.completion<50) recs.push({priority:"Haute",title:"Simplifier "+f.label,detail:"Beaucoup d'actions commencent mais ne finissent pas. Réduire les champs ou mieux expliquer l'étape."});
+      if(f.views===0 && ["debts","reports","financial_plan"].includes(f.id)) recs.push({priority:"Moyenne",title:"Rendre visible "+f.label,detail:"Ce module porte une forte valeur de décision, mais il n'est pas encore consulté."});
+      if(f.views>=3 && f.starts===0 && ["income","expenses","debts","pots"].includes(f.id)) recs.push({priority:"Moyenne",title:"Ajouter une action plus directe dans "+f.label,detail:"La page est vue, mais aucune action n'est lancée depuis ce module."});
+    });
+    if(!events.length) recs.push({priority:"Moyenne",title:"Collecter une première journée d'usage",detail:"Utilise l'app normalement. Le rapport devient utile après quelques navigations et créations."});
+    if(!recs.length) recs.push({priority:"Basse",title:"Continuer à améliorer les décisions",detail:"Aucun blocage évident. Prochaine priorité : rendre les recommandations plus personnalisées."});
+    return recs.slice(0,6);
+  }
+  _productEvaluationHtml(){
+    var e=this._productEvaluation();
+    var featureRows=e.features.slice(0,6).map((f)=>{
+      return '<div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:12px"><div style="min-width:0"><b>'+this._esc(f.label)+'</b><div style="font-size:12px;color:#8B98A2;margin-top:3px">'+this._esc(f.goal)+'</div></div><div style="font-size:13px;font-weight:900;color:#1E5081">'+this._esc(String(f.score))+'/100</div></div>';
+    });
+    var recRows=e.recommendations.map((r)=>{
+      var tone=r.priority==="Haute"?"#C15F4C":(r.priority==="Moyenne"?"#B98A2E":"#3F9A5A");
+      return '<div style="padding:11px 12px;background:#fff;border:1px solid #E7E9E4;border-radius:13px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11px;font-weight:900;color:'+tone+';background:#F7F8F5;border-radius:99px;padding:4px 8px">'+this._esc(r.priority)+'</span><b>'+this._esc(r.title)+'</b></div><div style="font-size:12.5px;color:#5A6B78;line-height:1.4;margin-top:5px">'+this._esc(r.detail)+'</div></div>';
+    });
+    return '<section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px"><div><h3 style="margin:0;font-size:16px;font-weight:900">Évaluation automatique du projet</h3><p style="margin:4px 0 0;color:#8B98A2;font-size:12.5px;line-height:1.4">Analyse privée de l’usage et des mises à jour prioritaires. Aucun montant, email, nom de banque, créancier ou justificatif n’est enregistré ici.</p></div><span style="font-size:12px;font-weight:900;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:6px 10px">'+this._esc(e.eventCount+" signaux")+'</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:12px">'+featureRows.join("")+'</div><div style="display:flex;flex-direction:column;gap:8px">'+recRows.join("")+'</div></section>';
+  }
   _todayShort(){ var d=new Date(); return d.getDate()+" "+this._moisFr[d.getMonth()]; }
   _todayFull(){ var d=new Date(); return d.getDate()+" "+this._moisFr[d.getMonth()]+" "+d.getFullYear(); }
   _thisMonth(){ return this._moisLong[new Date().getMonth()]; }
@@ -622,6 +794,7 @@ class Component extends DCLogic {
   componentDidMount(){
     window.__mc=this;
     window.__mcMoneyTests=()=>this._moneyTests();
+    window.__mcProductEvaluation=()=>this._productEvaluation();
     this._watchViewportMode();
     this._openIDB();
     var data=this._loadV2();
@@ -1328,6 +1501,7 @@ class Component extends DCLogic {
   /* ---------- Forms ---------- */
   openForm(kind, ctx){
     var self=this; ctx=ctx||{};
+    this._trackFeature(this._evalFeatureForForm(kind),"feature_started",{kind:kind});
     var CUR=this._cur(this.state.currency);
     var P=function(v){ return self.mParse(v, CUR); };
 
@@ -1347,6 +1521,7 @@ class Component extends DCLogic {
           else { accs=accs.concat([{id:self._uid(),name:v.name,type:v.type,balance_minor:bal,currency:CUR,updated:"Aujourd'hui",linked:true,icon:self._iconForType(v.type),c:"#1E5081",b:"#EAF1F8"}]); }
           return {accounts:accs};
         }, function(){ self._persist(); });
+        self._trackFeature("available","feature_completed",{kind:"account"});
         self.showToast("ok", a?"Solde mis à jour.":"Compte ajouté.");
       }, a?"Mettre à jour":"Ajouter le compte");
     }
@@ -1370,6 +1545,7 @@ class Component extends DCLogic {
           var accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===CUR)?Object.assign({},a,{balance_minor:a.balance_minor+amt,linked:true,updated:"Aujourd'hui"}):a; });
           return {incomes:[inc].concat(s.incomes), accounts:accs};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("income:"+id, v.proof).then(function(n){ if(n) self.showToast("ok","Justificatif joint au revenu."); }); } });
+        self._trackFeature("income","feature_completed",{kind:"income",has_account:!!v.account,has_proof:!!(v.proof&&v.proof.length)});
         self.showToast("ok","Revenu enregistré. Le compte a été crédité.");
       }, "Enregistrer le revenu");
     }
@@ -1385,6 +1561,7 @@ class Component extends DCLogic {
         var t=P(v.target); if(t<=0) return "Indique un montant cible.";
         var sv=P(v.saved);
         self.setState(function(s){ return {savings:s.savings.concat([{id:self._uid(),name:v.name,target_amount_minor:t,current_amount_minor:sv,currency:CUR,date:v.date||"—",status:(sv>=t?"Atteint":"En cours")}])}; }, function(){ self._persist(); });
+        self._trackFeature("savings","feature_completed",{kind:"saving"});
         self.showToast("ok","Objectif d'épargne créé.");
       }, "Créer l'objectif");
     }
@@ -1404,6 +1581,7 @@ class Component extends DCLogic {
           var contrib={id:cid,savings_goal_id:g.id,account:v.account||"",amount_minor:amt,currency:gcur,date:self._todayFull(),note:""};
           return {savings:savings, accounts:accs, savingsContributions:(s.savingsContributions||[]).concat([contrib])};
         }, function(){ self._persist(); });
+        self._trackFeature("savings","feature_completed",{kind:"saveAdd",has_account:!!v.account});
         self.showToast("ok","Épargne mise à jour. Continue comme ça.");
       }, "Épargner");
     }
@@ -1420,6 +1598,7 @@ class Component extends DCLogic {
         var pr=P(v.price); if(pr<=0) return "Indique un prix.";
         var sv=P(v.saved);
         self.setState(function(s){ return {pots:s.pots.concat([{id:self._uid(),name:v.name,target_amount_minor:pr,current_amount_minor:sv,currency:CUR,date:v.date||"—",priority:v.priority,status:(sv>=pr?"Atteint":"En cours")}])}; }, function(){ self._persist(); });
+        self._trackFeature("pots","feature_completed",{kind:"pot"});
         self.showToast("ok","Cagnotte créée. Cotise avant d'acheter.");
       }, "Créer la cagnotte");
     }
@@ -1440,6 +1619,7 @@ class Component extends DCLogic {
           var contrib={id:cid,purchase_goal_id:gp.id,account:v.account||"",amount_minor:amt,currency:pcur,date:self._todayFull(),note:""};
           return {pots:pots, accounts:accs, purchaseContributions:(s.purchaseContributions||[]).concat([contrib])};
         }, function(){ self._persist(); });
+        self._trackFeature("pots","feature_completed",{kind:"potAdd",has_account:!!v.account});
         if(reached) self.showToast("ok","Objectif atteint ! Tu peux acheter sans toucher à ton budget.");
         else self.showToast("ok","Tu avances bien — cotisation ajoutée.");
       }, "Cotiser");
@@ -1464,6 +1644,7 @@ class Component extends DCLogic {
           var debt={id:self._uid(),name:v.name,creditor:v.creditor,total_amount_minor:tot,paid_amount_minor:pd,currency:CUR,due:v.due||"—",status:(pd>=tot?"Soldée":"À jour"),minimum_minor:min,apr_bps:apr};
           return {debts:s.debts.concat([debt]),financialPlan:self._planWithDebtMeta(s.financialPlan,debt,CUR)};
         }, function(){ self._persist(); });
+        self._trackFeature("debts","feature_completed",{kind:"debt"});
         self.showToast("ok","Dette enregistrée — suivi clair et serein.");
       }, "Ajouter la dette");
     }
@@ -1485,6 +1666,7 @@ class Component extends DCLogic {
           var pay={id:pid,debt_id:gd.id,account:v.account||"",amount_minor:amt,currency:dcur,date:self._todayFull(),note:""};
           return {debts:debts, accounts:accs, debtPayments:(s.debtPayments||[]).concat([pay])};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("debt:"+gd.id+":"+pid, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve de paiement jointe."); }); } });
+        self._trackFeature("debts","feature_completed",{kind:"debtPay",has_account:!!v.account,has_proof:!!(v.proof&&v.proof.length)});
         self.showToast("ok","Paiement enregistré. Tu avances bien.");
       }, "Enregistrer le paiement");
     }
@@ -1502,6 +1684,7 @@ class Component extends DCLogic {
         var lent=P(v.lent); if(lent<=0) return "Indique le montant prêté.";
         var rp=P(v.repaid), id=self._uid();
         self.setState(function(s){ return {loans:s.loans.concat([{id:id,name:v.name,rel:v.rel||"—",amount_lent_minor:lent,amount_repaid_minor:rp,currency:CUR,due:v.due||"—",status:(rp>=lent?"Remboursé":(rp>0?"En cours":"En attente")),proof:!!(v.proof&&v.proof.length)}])}; }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("loan:"+id, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve du prêt jointe."); }); } });
+        self._trackFeature("loans","feature_completed",{kind:"loan",has_proof:!!(v.proof&&v.proof.length)});
         self.showToast("ok","Prêt enregistré — suivi séparé de tes dettes.");
       }, "Ajouter le prêt");
     }
@@ -1522,6 +1705,7 @@ class Component extends DCLogic {
           var rep={id:rid,loan_id:gl.id,account:v.account||"",amount_minor:amt,currency:lcur,date:self._todayFull(),note:""};
           return {loans:loans, accounts:accs, loanRepayments:(s.loanRepayments||[]).concat([rep])};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("loanrepay:"+gl.id+":"+rid, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve jointe."); }); } });
+        self._trackFeature("loans","feature_completed",{kind:"loanFollow",has_account:!!v.account,has_proof:!!(v.proof&&v.proof.length)});
         self.showToast("ok","Remboursement enregistré. Le compte a été crédité.");
       }, "Enregistrer le remboursement");
       var remind=document.createElement("button");
@@ -1728,14 +1912,15 @@ class Component extends DCLogic {
     el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Onboarding</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
     var back=el.querySelector("#mc-ob-back"), skip=el.querySelector("#mc-ob-skip"), next=el.querySelector("#mc-ob-next");
     back.onclick=function(){ if(step>0){ p.onboarding.step=step-1; self._setPlan(p); } };
-    skip.onclick=function(){ var err=self._saveOnboardingStep(step,true); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
-    next.onclick=function(){ var err=self._saveOnboardingStep(step,false); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
+    skip.onclick=function(){ var err=self._saveOnboardingStep(step,true); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } self._trackFeature("onboarding","feature_skipped",{step:step}); p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
+    next.onclick=function(){ var err=self._saveOnboardingStep(step,false); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } self._trackFeature("onboarding","feature_completed",{step:step}); p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
     el.onclick=function(e){
       var b=e.target && e.target.closest ? e.target.closest("[data-ob-action]") : null; if(!b) return;
       var kind=b.getAttribute("data-ob-kind"), action=b.getAttribute("data-ob-action"), plan=self._plan(), rows=self._collectObRows(kind,true);
       if(action==="add") rows.push(self._obDefaultRow(kind));
       if(action==="remove") rows.splice(Number(b.getAttribute("data-ob-index"))||0,1);
       plan.structured=plan.structured||{}; plan.structured[kind]=rows; if(plan.raw) plan.raw[kind]=self._obSerialize(kind,rows);
+      self._trackFeature("onboarding","feature_started",{step:step,section:kind,action:action});
       self._setPlan(plan);
     };
   }
@@ -1801,7 +1986,7 @@ class Component extends DCLogic {
     if(savings.length) patch.savings=savings;
     if(pots.length) patch.pots=pots;
     p.onboarding.completed=true; p.onboarding.completed_at=new Date().toISOString(); p.onboarding.step=5; patch.financialPlan=p;
-    this.setState(patch,function(){ self._normalizeIds(); self._persist(); self.showToast("ok","Onboarding terminé. Ton plan est actif."); });
+    this.setState(patch,function(){ self._normalizeIds(); self._persist(); self._trackFeature("onboarding","feature_completed",{step:5,result:"completed"}); self.showToast("ok","Onboarding terminé. Ton plan est actif."); });
   }
   _metricCard(title,value,sub){
     return '<div style="background:#fff;border:1px solid #E7E9E4;border-radius:16px;padding:14px"><div style="font-size:12px;font-weight:800;color:#8B98A2;margin-bottom:5px">'+this._esc(title)+'</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(value)+'</div><div style="font-size:12px;color:#5A6B78;margin-top:4px;line-height:1.35">'+this._esc(sub||"")+'</div></div>';
@@ -1811,6 +1996,7 @@ class Component extends DCLogic {
     return '<div style="display:flex;flex-direction:column;gap:8px">'+rows.join("")+'</div>';
   }
   _openPlanPanel(){
+    this._trackFeature("financial_plan","feature_viewed",{source:this.state.page});
     var self=this, p=this._plan(), life=this._lifestyleSignal(), debtPlan=this._debtDecisionPlan(), seq=this._sequentialFunding(), rev=this._monthlyReview(), re=this._realEstateProjection(), planned=this._plannedPurchaseViews();
     var body=document.createElement("div");
     var debtRows=debtPlan.sequence.map((x)=>'<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:12px"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11px;font-weight:900;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:4px 8px">#'+this._esc(x.rank)+'</span><b>'+this._esc(x.name)+'</b></div><div style="font-size:12px;color:#8B98A2;margin-top:4px">'+this._esc("Reste "+this.mFmt(x.remain,this.state.currency)+" · minimum "+this.mFmt(x.minimum_minor,this.state.currency))+'</div></div><div style="text-align:right;font-size:12.5px;color:#5A6B78;min-width:116px">'+this._esc(this.mFmt(x.monthly,this.state.currency)+"/mois")+"<br>"+this._esc(x.done?x.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}):"Budget à définir")+'</div></div>');
@@ -1826,7 +2012,7 @@ class Component extends DCLogic {
     if((p.realEstate&&p.realEstate.status)!=="no"){
       realEstateHtml='<section style="margin-top:14px;background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Projet immobilier</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">'+this._metricCard("Mensualité max",this.mFmt(re.maxPayment,this.state.currency),"Règle 28/36")+this._metricCard("Prix estimé max","~"+this.mFmt(re.maxPrice,this.state.currency),"Avec apport lié")+this._metricCard("Apport",this.mFmt(re.downPayment,this.state.currency),"Cagnotte liée")+'</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:12px">'+this._rangeHtml("mc_sim_income","Et si revenu +",this._plain(p.simulator.extra_income_minor||0,this.state.currency),0,3000,50,this.state.currency+"/mois")+this._rangeHtml("mc_sim_debt","Et si dette libérée/mois",this._plain(p.simulator.freed_debt_minor||0,this.state.currency),0,1000,10,this.state.currency+"/mois")+this._rangeHtml("mc_sim_rate","Et si taux (%)",String((p.simulator.rate_bps||650)/100).replace(",","."),3,12,.1,"%")+'</div><p style="margin:2px 0 0;color:#8B98A2;font-size:11.5px;line-height:1.45">Estimation basée sur les ratios 28/36 couramment utilisés par les prêteurs américains. Chaque banque a ses propres critères. Ceci n’est pas un conseil financier.</p></section>';
     }
-    body.innerHTML='<div style="'+this._plannerStyle()+'"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">'+this._metricCard("Anti-inflation",life.baseline?((life.pct>=0?"+":"")+life.pct+" %"):"À calibrer",life.alert?"Tes dépenses montent avec le revenu.":"Baseline suivie.")+this._metricCard("Mode cagnottes",(p.funding.mode==="sequential"?"Séquentiel":"Parallèle"),seq.active?("Objectif actif : "+seq.active.name):"Aucun objectif actif")+this._metricCard("Bilan "+rev.month,this.mFmt(rev.income-rev.expenses,this.state.currency),"Revenus - dépenses")+'</div><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Plan d’attaque dettes</h3>'+debtDecisionHtml+this._listHtml(debtRows,"Ajoute tes dettes avec minimum mensuel pour recevoir une stratégie claire.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Achats planifiés anti-Klarna</h3>'+this._listHtml(plannedRows,"Ajoute un achat planifié dans l’onboarding ou les cagnottes.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Bilan mensuel automatique</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><b style="font-size:13px">Revenus par source</b>'+this._listHtml(incomeRows,"Aucun revenu ce mois.")+'</div><div><b style="font-size:13px">Dépenses par catégorie</b>'+this._listHtml(expenseRows,"Aucune dépense ce mois.")+'</div></div><div style="margin-top:10px;font-size:12.5px;color:#5A6B78">'+this._esc("Écart dépenses vs mois précédent : "+this.mFmt(rev.delta,this.state.currency))+'</div></section>'+realEstateHtml+'</div>';
+    body.innerHTML='<div style="'+this._plannerStyle()+'"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">'+this._metricCard("Anti-inflation",life.baseline?((life.pct>=0?"+":"")+life.pct+" %"):"À calibrer",life.alert?"Tes dépenses montent avec le revenu.":"Baseline suivie.")+this._metricCard("Mode cagnottes",(p.funding.mode==="sequential"?"Séquentiel":"Parallèle"),seq.active?("Objectif actif : "+seq.active.name):"Aucun objectif actif")+this._metricCard("Bilan "+rev.month,this.mFmt(rev.income-rev.expenses,this.state.currency),"Revenus - dépenses")+'</div><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Plan d’attaque dettes</h3>'+debtDecisionHtml+this._listHtml(debtRows,"Ajoute tes dettes avec minimum mensuel pour recevoir une stratégie claire.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Achats planifiés anti-Klarna</h3>'+this._listHtml(plannedRows,"Ajoute un achat planifié dans l’onboarding ou les cagnottes.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Bilan mensuel automatique</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><b style="font-size:13px">Revenus par source</b>'+this._listHtml(incomeRows,"Aucun revenu ce mois.")+'</div><div><b style="font-size:13px">Dépenses par catégorie</b>'+this._listHtml(expenseRows,"Aucune dépense ce mois.")+'</div></div><div style="margin-top:10px;font-size:12.5px;color:#5A6B78">'+this._esc("Écart dépenses vs mois précédent : "+this.mFmt(rev.delta,this.state.currency))+'</div></section>'+this._productEvaluationHtml()+realEstateHtml+'</div>';
     var modal=this._mcModal("Plan financier", body, null);
     modal.card.style.maxWidth="760px";
     var saveSim=function(){
