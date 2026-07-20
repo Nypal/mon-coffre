@@ -225,6 +225,22 @@ assert(
   !onboarding._renderOnboarding.toString().includes("Onboarding obligatoire"),
   "onboarding label must not contradict the skip action"
 );
+const draftRowsPlan = onboarding._mergePlan({
+  structured: {
+    fixedExpenses: [
+      { name: "Loyer", amount: "792,35", day: "1", category: "Logement" },
+      onboarding._obDefaultRow("fixedExpenses"),
+    ],
+  },
+});
+assert(
+  onboarding._obRows("fixedExpenses", draftRowsPlan, true).length === 2,
+  "repeatable onboarding sections must keep blank draft rows visible"
+);
+assert(
+  onboarding._obRows("fixedExpenses", draftRowsPlan).length === 1,
+  "blank draft rows must be ignored when onboarding data is saved"
+);
 
 const quickStart = new Component();
 quickStart.props = { mode: "desktop" };
