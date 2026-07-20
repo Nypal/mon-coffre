@@ -746,7 +746,7 @@ class Component extends DCLogic {
       income:[["source","Nom de la source","text","InvenTech"],["amount","Montant","money","3200"],["frequency","Fréquence","select",["Hebdomadaire","Bi-hebdomadaire","Mensuel","Variable"]],["payday","Jour de paie","select",day],["income_type","Type","select",["Fixe","Variable"]]],
       accounts:[["name","Nom de la banque","text","Amegy"],["balance","Solde actuel","money","1200"],["role","Rôle","select",["Dépenses","Coussin de sécurité","Épargne","Autre"]]],
       fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",fixedDay],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Autre"]]],
-      debts:[["name","Dette / créancier","text","CC1"],["balance","Solde","money","500"],["minimum","Minimum mensuel","money","25"],["apr","Taux %","text","24,9"],["due","Jour d'échéance","select",day]],
+      debts:[["name","À qui / pour quoi ?","text","Carte Capital One"],["balance","Montant restant","money","500"],["minimum","Minimum à payer","money","25"],["apr","Intérêt si connu","text","0"],["due","Jour limite","select",day]],
       goals:[["name","Objectif","text","Épargne décembre"],["target","Montant cible","money","10000"],["date","Date cible","text","2026-12-31"],["priority","Priorité","select",["Haute","Moyenne","Basse"]]],
       plannedPurchases:[["name","Objet","text","MacBook"],["price","Prix","money","900"],["schedule","Date ou contribution","text","2026-11-01 ou 75/semaine"],["priority","Priorité","select",["Haute","Moyenne","Basse"]],["image_url","Image optionnelle","text","https://..."]]
     };
@@ -816,9 +816,9 @@ class Component extends DCLogic {
         if(this._moneyInput(r.amount,this.state.currency)<=0) return "Dépense "+n+" : indique un montant.";
         r.day=r.day||"1"; r.category=this._obCategory(r.category);
       } else if(kind==="debts"){
-        if(!r.name) return "Dette "+n+" : indique le nom.";
-        if(this._moneyInput(r.balance,this.state.currency)<=0) return "Dette "+n+" : indique le solde.";
-        if(String(r.minimum||"").trim()==="") return "Dette "+n+" : indique le minimum mensuel, même 0.";
+        if(!r.name) return "Dette "+n+" : indique à qui tu dois payer, ou pourquoi.";
+        if(this._moneyInput(r.balance,this.state.currency)<=0) return "Dette "+n+" : indique le montant qu'il reste à payer.";
+        if(String(r.minimum||"").trim()==="") return "Dette "+n+" : indique le minimum à payer chaque mois, même 0.";
         r.due=r.due||"Variable";
       } else if(kind==="goals"){
         if(!r.name) return "Objectif "+n+" : indique le nom.";
@@ -1395,7 +1395,7 @@ class Component extends DCLogic {
       {title:"Démarrage",sub:"Devise, revenu actuel et rythme de paie. Deux minutes suffisent pour commencer."},
       {title:"Comptes",sub:"Banques, soldes actuels et rôle de chaque compte."},
       {title:"Dépenses fixes",sub:"Loyer, abonnements, transferts famille et dates."},
-      {title:"Dettes",sub:"Soldes, minimums, échéances et stratégie boule de neige."},
+      {title:"Argent à rembourser",sub:"Cartes, prêts ou paiements en cours. Mon Coffre t'aidera à choisir quoi payer en premier."},
       {title:"Objectifs",sub:"Coussin, cagnottes, achats planifiés et immobilier."},
       {title:"Habitudes",sub:"Risques, bilan mensuel et seuils d'alerte."}
     ];
@@ -1420,8 +1420,9 @@ class Component extends DCLogic {
     } else if(step===2){
       body+=this._obRepeatHtml("fixedExpenses","Dépenses fixes",this._obRows("fixedExpenses",p,true),"+ Ajouter une dépense","Ajoute au moins une dépense fixe, ou passe si aucune ne s'applique.");
     } else if(step===3){
-      body+=this._fieldHtml("ob_debt_budget","Budget mensuel total dettes",this._plain(snow.monthly_budget_minor||0,p.profile.main_currency||"USD"),"Ex : 300","text");
-      body+=this._obRepeatHtml("debts","Dettes",this._obRows("debts",p,true),"+ Ajouter une dette","Ajoute tes dettes pour activer la boule de neige, ou passe si tu n'en as pas.");
+      body+=this._fieldHtml("ob_debt_budget","Combien peux-tu payer par mois ?",this._plain(snow.monthly_budget_minor||0,p.profile.main_currency||"USD"),"Ex : 300","text");
+      body+='<p style="margin:-4px 0 13px;color:#8B98A2;font-size:12px;line-height:1.45">Mets le montant total que tu peux envoyer chaque mois pour rembourser tes cartes, prêts ou factures. Si tu ne sais pas encore, laisse 0.</p>';
+      body+=this._obRepeatHtml("debts","Ce que je dois rembourser",this._obRows("debts",p,true),"+ Ajouter une dette","Ajoute une carte, un prêt ou une facture à rembourser. Si tu n'as rien, clique Passer cette étape.");
     } else if(step===4){
       body+=this._fieldHtml("ob_emergency","Coussin de sécurité cible",this._plain((p.emergency_target_minor||0),p.profile.main_currency||"USD"),"Ex : 800","text");
       body+=this._selectHtml("ob_seq","Mode de financement",fund.mode||"sequential",[{value:"sequential",label:"Séquentiel : un objectif à la fois"},{value:"parallel",label:"Parallèle"}]);

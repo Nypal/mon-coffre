@@ -241,6 +241,19 @@ assert(
   onboarding._obRows("fixedExpenses", draftRowsPlan).length === 1,
   "blank draft rows must be ignored when onboarding data is saved"
 );
+const debtFields = onboarding._obFields("debts").map((field) => field[1]);
+assert(debtFields.includes("À qui / pour quoi ?"), "debt onboarding must use plain-language creditor labels");
+assert(debtFields.includes("Montant restant"), "debt onboarding must explain balance as remaining amount");
+assert(debtFields.includes("Minimum à payer"), "debt onboarding must explain monthly minimum plainly");
+assert(debtFields.includes("Intérêt si connu"), "debt onboarding must make interest optional and understandable");
+assert(
+  onboarding._renderOnboarding.toString().includes("Combien peux-tu payer par mois ?"),
+  "debt budget prompt must be plain-language"
+);
+assert(
+  !onboarding._renderOnboarding.toString().includes("Budget mensuel total dettes"),
+  "debt onboarding must avoid finance-first budget jargon"
+);
 
 const quickStart = new Component();
 quickStart.props = { mode: "desktop" };
