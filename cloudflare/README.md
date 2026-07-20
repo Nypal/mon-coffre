@@ -9,3 +9,7 @@ the configured custom domains only.
 
 The Worker build script injects the production security headers. Do not bypass
 `scripts/build_cloudflare_worker.py` during deployment.
+
+The same build script serves the PWA manifest, app icons, Apple touch icon, and
+service worker so `moncoffre.org` can be installed on iOS and Android as
+`Mon Coffre`.
