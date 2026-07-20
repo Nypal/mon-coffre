@@ -13,13 +13,15 @@ Any repeatable financial data must use structured rows, not fragile free-text fo
 ## Onboarding Screens
 
 1. Income
-   - display name;
-   - main currency;
-   - previous monthly income;
    - current monthly income;
-   - monthly spending baseline;
-   - date of income change;
-   - repeatable income source rows:
+   - main currency;
+   - primary payday rhythm;
+   - usual monthly spending;
+   - optional display name;
+   - optional recent income change details:
+     - previous monthly income;
+     - date of income change;
+   - optional repeatable income source rows:
      - source name;
      - amount;
      - frequency: `Hebdomadaire`, `Bi-hebdomadaire`, `Mensuel`, or `Variable`;
@@ -73,6 +75,8 @@ Any repeatable financial data must use structured rows, not fragile free-text fo
 ### Lifestyle Inflation Guard
 
 The app stores a baseline monthly spending amount and compares current spending against it.
+
+In the product UI, this value is presented as usual monthly spending instead of using the technical term baseline.
 
 Example alert:
 
@@ -206,6 +210,7 @@ database/migrations/20260719_onboarding_modules_v1.sql
 
 - A new confirmed cloud user cannot enter the application until onboarding is complete.
 - The onboarding flow provides a real skip action for non-applicable sections.
+- The first onboarding screen stays lightweight: current monthly income, currency, payday rhythm, and usual spending first; detailed income sources and income-change history are optional.
 - Repeatable onboarding inputs use structured rows with add/remove controls.
 - Users are not asked to type `Aucun`.
 - Account roles, income frequencies, income types, fixed expense categories, and priorities are controlled values.

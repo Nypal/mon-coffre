@@ -602,7 +602,7 @@ class Component extends DCLogic {
     return {
       version:1,
       onboarding:{completed:false,completed_at:null,step:0},
-      profile:{display_name:"",main_currency:"USD",country:"US"},
+      profile:{display_name:"",main_currency:"USD",country:"US",pay_frequency:"Mensuel"},
       raw:{income:"",accounts:"",fixedExpenses:"",debts:"",goals:"",plannedPurchases:"",riskAreas:"",dangerousPayday:""},
       structured:{income:[],accounts:[],fixedExpenses:[],debts:[],goals:[],plannedPurchases:[]},
       lifestyle:{old_income_minor:0,new_income_minor:0,change_date:"",baseline_expense_minor:0,threshold_pct:15,excluded:"Logement, dettes, urgence médicale"},
@@ -716,7 +716,7 @@ class Component extends DCLogic {
       if(kind==="plannedPurchases"){ row.priority=self._obPriority(row.priority); row.image_url=self._safeImageUrl(row.image_url); }
       return row;
     }
-    if(Array.isArray(s) && s.length) return s.map(clean);
+    if(Array.isArray(s) && s.length) return s.map(clean).filter(function(row){ return self._obRowHasMeaning(kind,row); });
     return this._parseObRows(kind,(p.raw&&p.raw[kind])||"");
   }
   _obSerialize(kind, rows){
@@ -743,9 +743,24 @@ class Component extends DCLogic {
     };
     return fields[kind]||[];
   }
+  _obMeaningfulKeys(kind){
+    var keys={
+      income:["source","amount"],
+      accounts:["name","balance"],
+      fixedExpenses:["name","amount"],
+      debts:["name","balance","minimum"],
+      goals:["name","target","date"],
+      plannedPurchases:["name","price","schedule"]
+    };
+    return keys[kind]||null;
+  }
+  _obRowHasMeaning(kind,row){
+    var keys=this._obMeaningfulKeys(kind)||Object.keys(row||{});
+    return keys.some(function(k){ return String((row||{})[k]||"").trim()!==""; });
+  }
   _obRepeatHtml(kind,label,rows,addLabel,hint){
     var fields=this._obFields(kind), data=(rows&&rows.length)?rows:[this._obDefaultRow(kind)], self=this;
-    var html='<section data-ob-section="'+this._esc(kind)+'" style="border:1px solid #EFF1EC;background:#F7F8F5;border-radius:16px;padding:12px;margin-bottom:13px"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px"><div><div style="font-size:12.5px;font-weight:900;color:#5A6B78">'+this._esc(label)+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:2px">'+this._esc(hint||"Ajoute une ligne, ou passe cette étape si elle ne te concerne pas.")+'</div></div><button type="button" data-ob-action="add" data-ob-kind="'+this._esc(kind)+'" style="flex:none;padding:9px 11px;border-radius:11px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:12.5px;font-weight:900;cursor:pointer">+ Ajouter</button></div><div style="display:flex;flex-direction:column;gap:10px">';
+    var html='<section data-ob-section="'+this._esc(kind)+'" style="border:1px solid #EFF1EC;background:#F7F8F5;border-radius:16px;padding:12px;margin-bottom:13px"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px"><div><div style="font-size:12.5px;font-weight:900;color:#5A6B78">'+this._esc(label)+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:2px">'+this._esc(hint||"Ajoute une ligne, ou passe cette étape si elle ne te concerne pas.")+'</div></div><button type="button" data-ob-action="add" data-ob-kind="'+this._esc(kind)+'" style="flex:none;padding:9px 11px;border-radius:11px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:12.5px;font-weight:900;cursor:pointer">'+this._esc(addLabel||"+ Ajouter")+'</button></div><div style="display:flex;flex-direction:column;gap:10px">';
     data.forEach(function(row,i){
       html+='<div data-ob-row="'+i+'" style="background:#fff;border:1px solid #E7E9E4;border-radius:14px;padding:11px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:9px;align-items:end">';
       fields.forEach(function(f){
@@ -765,13 +780,13 @@ class Component extends DCLogic {
     return html+'</div></section>';
   }
   _collectObRows(kind){
-    var nodes=document.querySelectorAll('[data-ob-kind="'+kind+'"][data-ob-key]'), by={};
+    var self=this, nodes=document.querySelectorAll('[data-ob-kind="'+kind+'"][data-ob-key]'), by={};
     Array.prototype.forEach.call(nodes,function(el){
       var i=String(el.getAttribute("data-ob-index")||"0"), k=el.getAttribute("data-ob-key");
       by[i]=by[i]||{}; by[i][k]=String(el.value||"").trim();
     });
     return Object.keys(by).sort(function(a,b){return Number(a)-Number(b);}).map(function(i){ return by[i]; }).filter(function(r){
-      return Object.keys(r).some(function(k){ return String(r[k]||"").trim()!==""; });
+      return self._obRowHasMeaning(kind,r);
     });
   }
   _obRowsError(kind, rows, allowEmpty){
@@ -1368,7 +1383,7 @@ class Component extends DCLogic {
   }
   _onboardingStepMeta(){
     return [
-      {title:"Revenus",sub:"Sources, ancien revenu, nouveau revenu et baseline anti-inflation."},
+      {title:"Démarrage",sub:"Devise, revenu actuel et rythme de paie. Deux minutes suffisent pour commencer."},
       {title:"Comptes",sub:"Banques, soldes actuels et rôle de chaque compte."},
       {title:"Dépenses fixes",sub:"Loyer, abonnements, transferts famille et dates."},
       {title:"Dettes",sub:"Soldes, minimums, échéances et stratégie boule de neige."},
@@ -1383,13 +1398,14 @@ class Component extends DCLogic {
     var r=p.raw||{}, life=p.lifestyle||{}, snow=p.snowball||{}, re=p.realEstate||{}, fund=p.funding||{}, rev=p.monthlyReview||{};
     var body="";
     if(step===0){
-      body+=this._fieldHtml("ob_name","Nom affiché",p.profile.display_name,"Ex : Paul");
+      body+=this._fieldHtml("ob_new_income","Revenu mensuel actuel",this._plain(life.new_income_minor||0,p.profile.main_currency||"USD"),"Ex : 5300","text");
       body+=this._selectHtml("ob_cur","Devise principale",p.profile.main_currency||this.state.currency,["USD","EUR","XOF","XAF"]);
-      body+=this._fieldHtml("ob_old_income","Ancien revenu mensuel",this._plain(life.old_income_minor||0,p.profile.main_currency||"USD"),"Ex : 3000","text");
-      body+=this._fieldHtml("ob_new_income","Nouveau revenu mensuel",this._plain(life.new_income_minor||0,p.profile.main_currency||"USD"),"Ex : 5300","text");
-      body+=this._fieldHtml("ob_baseline","Baseline dépenses mensuelles",this._plain(life.baseline_expense_minor||0,p.profile.main_currency||"USD"),"Ex : 2100","text");
-      body+=this._fieldHtml("ob_change","Date du changement",life.change_date||"","Ex : 2026-07-01","text");
-      body+=this._obRepeatHtml("income","Sources de revenus",this._obRows("income",p),"+ Ajouter une source","Ajoute au moins une source, ou passe si tu veux compléter plus tard.");
+      body+=this._selectHtml("ob_pay_freq","Rythme de paiement principal",p.profile.pay_frequency||"Mensuel",["Mensuel","Bi-hebdomadaire","Hebdomadaire","Variable"]);
+      body+=this._fieldHtml("ob_baseline","Dépenses mensuelles habituelles",this._plain(life.baseline_expense_minor||0,p.profile.main_currency||"USD"),"Ex : 2100","text");
+      body+='<p style="margin:0 0 13px;color:#5A6B78;font-size:12.5px;line-height:1.45">Avec ces infos, Mon Coffre peut déjà estimer ton argent disponible chaque mois et repérer si tes dépenses montent avec ton revenu.</p>';
+      body+=this._fieldHtml("ob_name","Nom affiché optionnel",p.profile.display_name,"Ex : Paul");
+      body+='<details style="margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">J’ai récemment eu un changement de revenu</summary><div style="margin-top:10px">'+this._fieldHtml("ob_old_income","Revenu mensuel avant changement",this._plain(life.old_income_minor||0,p.profile.main_currency||"USD"),"Ex : 3000","text")+this._fieldHtml("ob_change","Date du changement",life.change_date||"","Ex : 2026-07-01","text")+'</div></details>';
+      body+='<details style="margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">Détailler mes sources de revenus</summary><div style="margin-top:10px">'+this._obRepeatHtml("income","Sources de revenus",this._obRows("income",p),"+ Ajouter une source","Ajoute une source seulement si tu veux détailler InvenTech, DoorDash, Concierge, etc.")+'</div></details>';
     } else if(step===1){
       body+=this._obRepeatHtml("accounts","Comptes",this._obRows("accounts",p),"+ Ajouter un compte","Le rôle vient d'une liste fermée pour que le coussin, l'épargne et les dépenses soient reconnus automatiquement.");
     } else if(step===2){
@@ -1413,7 +1429,7 @@ class Component extends DCLogic {
       body+=this._selectHtml("ob_review","Bilan mensuel automatique",rev.enabled===false?"no":"yes",[{value:"yes",label:"Oui"},{value:"no",label:"Non"}]);
     }
     el.style.cssText="position:fixed;inset:0;z-index:9800;background:rgba(243,244,241,.98);display:flex;align-items:center;justify-content:center;padding:18px;"+this._plannerStyle();
-    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Onboarding obligatoire</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
+    el.innerHTML='<div style="width:100%;max-width:760px;max-height:94vh;overflow:auto;background:#fff;border:1px solid #E7E9E4;border-radius:26px;box-shadow:0 24px 70px rgba(20,40,60,.18);padding:24px"><div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(160deg,#1E5081,#17405F);color:#8FE0A5;display:flex;align-items:center;justify-content:center;font-weight:900">'+(step+1)+'/6</div><div style="flex:1"><div style="font-size:12px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.08em">Personnalise ton coffre</div><h2 style="margin:4px 0 4px;font-size:24px;line-height:1.15">'+this._esc(meta[step].title)+'</h2><p style="margin:0;color:#5A6B78;font-size:13.5px;line-height:1.45">'+this._esc(meta[step].sub)+'</p></div></div><div style="height:8px;background:#EFF1EC;border-radius:999px;margin-bottom:18px"><div style="height:100%;width:'+Math.round((step+1)/6*100)+'%;border-radius:999px;background:#3F9A5A"></div></div><div id="mc-ob-error" style="min-height:18px;color:#C15F4C;font-size:13px;font-weight:800;margin-bottom:6px"></div>'+body+'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button id="mc-ob-back" type="button" style="flex:1;min-width:130px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#5A6B78;font-size:14px;font-weight:800;cursor:pointer;'+(step===0?"opacity:.45":"")+'">Retour</button><button id="mc-ob-skip" type="button" style="flex:1;min-width:150px;padding:14px;border-radius:13px;border:1px solid #DDE0DA;background:#fff;color:#1E5081;font-size:14px;font-weight:900;cursor:pointer">Passer cette étape</button><button id="mc-ob-next" type="button" style="flex:2;min-width:180px;padding:14px;border-radius:13px;border:none;background:linear-gradient(160deg,#1E5081,#17405F);color:#fff;font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 8px 18px rgba(30,80,129,.22)">'+(step===5?"Terminer et entrer dans l'app":"Continuer")+'</button></div><p style="margin:14px 0 0;color:#8B98A2;font-size:12px;line-height:1.45">Ajoute les informations disponibles maintenant, ou clique <b>Passer cette étape</b> si la situation ne te concerne pas. Tu pourras compléter plus tard.</p></div>';
     var back=el.querySelector("#mc-ob-back"), skip=el.querySelector("#mc-ob-skip"), next=el.querySelector("#mc-ob-next");
     back.onclick=function(){ if(step>0){ p.onboarding.step=step-1; self._setPlan(p); } };
     skip.onclick=function(){ var err=self._saveOnboardingStep(step,true); if(err){ el.querySelector("#mc-ob-error").textContent=err; return; } p=self._plan(); if(step<5){ p.onboarding.step=step+1; self._setPlan(p); } else { self._completeOnboarding(); } };
@@ -1432,11 +1448,10 @@ class Component extends DCLogic {
     function val(id){ var e=document.getElementById(id); return e?e.value.trim():""; }
     p.structured=p.structured||{};
     if(step===0){
-      var incomeRows=skip?[]:this._collectObRows("income"), incomeErr=skip?"":this._obRowsError("income",incomeRows,false);
-      if(!skip && !val("ob_name")) return "Indique ton nom affiché.";
+      var incomeRows=skip?[]:this._collectObRows("income"), incomeErr=incomeRows.length?this._obRowsError("income",incomeRows,true):"";
       if(!skip && incomeErr) return incomeErr;
-      if(!skip && this._moneyInput(val("ob_new_income"),cur)<=0) return "Indique ton revenu mensuel actuel.";
-      p.profile.display_name=val("ob_name")||p.profile.display_name; p.profile.main_currency=cur; p.structured.income=incomeRows; p.raw.income=this._obSerialize("income",incomeRows);
+      if(!skip && this._moneyInput(val("ob_new_income"),cur)<=0) return "Indique ton revenu mensuel actuel, ou clique Passer cette étape.";
+      p.profile.display_name=val("ob_name")||p.profile.display_name; p.profile.main_currency=cur; p.profile.pay_frequency=val("ob_pay_freq")||p.profile.pay_frequency||"Mensuel"; p.structured.income=incomeRows; p.raw.income=this._obSerialize("income",incomeRows);
       life.old_income_minor=this._moneyInput(val("ob_old_income"),cur); life.new_income_minor=this._moneyInput(val("ob_new_income"),cur); life.baseline_expense_minor=this._moneyInput(val("ob_baseline"),cur); life.change_date=val("ob_change");
     } else if(step===1){
       var accountRows=skip?[]:this._collectObRows("accounts"), accountErr=skip?"":this._obRowsError("accounts",accountRows,false);
@@ -1471,6 +1486,7 @@ class Component extends DCLogic {
     var accounts=this._obRows("accounts",p).map(function(a){ return {id:mkId(),name:a.name||"Compte",type:a.role||"Autre",balance_minor:self._moneyInput(a.balance,cur),currency:cur,updated:"Aujourd'hui",linked:true,icon:self._iconForType(a.role||"Autre"),c:"#1E5081",b:"#EAF1F8",role:a.role||"Autre"}; });
     var firstAcc=accounts[0]?accounts[0].name:"";
     var incomes=this._obRows("income",p).map(function(a){ return {id:mkId(),source:a.source||"Revenu",label:a.source||"Revenu",amount_minor:self._moneyInput(a.amount,cur),currency:cur,freq:a.frequency||"Mensuel",date:self._todayFull(),month:self._thisMonth(),account:firstAcc,note:"Jour: "+(a.payday||"Variable")+"; type: "+(a.income_type||"Fixe")}; });
+    if(!incomes.length && (p.lifestyle&&p.lifestyle.new_income_minor)>0) incomes.push({id:mkId(),source:"Revenu principal",label:"Revenu principal",amount_minor:Math.trunc(Number(p.lifestyle.new_income_minor)||0),currency:cur,freq:"Mensuel",date:self._todayFull(),month:self._thisMonth(),account:firstAcc,note:"Revenu mensuel actuel saisi pendant la configuration. Rythme de paie : "+((p.profile&&p.profile.pay_frequency)||"Mensuel")});
     var expenses=this._obRows("fixedExpenses",p).map(function(a){ return {id:mkId(),cat:a.category||"Autre",payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:String(a.day||self._todayShort()),month:self._thisMonth(),proof:null,note:"Dépense fixe onboarding"}; });
     var debts=this._obRows("debts",p).map(function(a){ var total=self._moneyInput(a.balance,cur); return {id:mkId(),name:a.name||"Dette",creditor:a.name||"Créancier",total_amount_minor:total,paid_amount_minor:0,currency:cur,due:a.due||"—",status:"À jour",minimum_minor:self._moneyInput(a.minimum,cur),apr_bps:Math.round(self._numInput(a.apr)*100)||0}; });
     var savings=[];
