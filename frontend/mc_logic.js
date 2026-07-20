@@ -1370,6 +1370,9 @@ class Component extends DCLogic {
     (options||[]).forEach((o)=>{ var val=o.value!=null?o.value:o, txt=o.label!=null?o.label:o; html+='<option value="'+this._esc(val)+'" '+(String(value)===String(val)?"selected":"")+'>'+this._esc(txt)+'</option>'; });
     return html+"</select>";
   }
+  _obDetailsHtml(title,hint,inner,open){
+    return '<details '+(open?'open ':'')+'style="border:1px solid #EFF1EC;background:#F7F8F5;border-radius:16px;padding:12px;margin-bottom:13px"><summary style="cursor:pointer;color:#1E5081;font-size:13px;font-weight:900">'+this._esc(title)+'</summary><div style="margin-top:4px;color:#8B98A2;font-size:11.5px;line-height:1.45">'+this._esc(hint||"Optionnel. Tu peux compléter plus tard.")+'</div><div style="margin-top:10px">'+inner+'</div></details>';
+  }
   _wirePlanningUi(){
     try{
       var self=this;
@@ -1424,13 +1427,14 @@ class Component extends DCLogic {
       body+='<p style="margin:-4px 0 13px;color:#8B98A2;font-size:12px;line-height:1.45">Mets le montant total que tu peux envoyer chaque mois pour rembourser tes cartes, prêts ou factures. Si tu ne sais pas encore, laisse 0.</p>';
       body+=this._obRepeatHtml("debts","Ce que je dois rembourser",this._obRows("debts",p,true),"+ Ajouter une dette","Ajoute une carte, un prêt ou une facture à rembourser. Si tu n'as rien, clique Passer cette étape.");
     } else if(step===4){
-      body+=this._fieldHtml("ob_emergency","Coussin de sécurité cible",this._plain((p.emergency_target_minor||0),p.profile.main_currency||"USD"),"Ex : 800","text");
-      body+=this._selectHtml("ob_seq","Mode de financement",fund.mode||"sequential",[{value:"sequential",label:"Séquentiel : un objectif à la fois"},{value:"parallel",label:"Parallèle"}]);
-      body+=this._obRepeatHtml("goals","Objectifs / cagnottes",this._obRows("goals",p,true),"+ Ajouter un objectif","Ajoute une cagnotte ou un objectif d'épargne, ou passe si tu veux compléter plus tard.");
-      body+=this._obRepeatHtml("plannedPurchases","Achats planifiés",this._obRows("plannedPurchases",p,true),"+ Ajouter un achat","Planifie un achat cash anti-Klarna, ou laisse vide si aucun achat n'est prévu.");
-      body+=this._selectHtml("ob_re_status","Projet immobilier",re.status||"not_yet",[{value:"yes",label:"Oui"},{value:"not_yet",label:"Pas encore"},{value:"no",label:"Non"}]);
-      body+=this._fieldHtml("ob_re_price","Prix cible optionnel",this._plain(re.target_price_minor||0,p.profile.main_currency||"USD"),"Ex : 230000","text");
-      body+=this._fieldHtml("ob_re_rate","Taux estimé (%)",String((re.rate_bps||700)/100).replace(".",","),"Ex : 7","text");
+      var goalRows=this._obRows("goals",p,true), purchaseRows=this._obRows("plannedPurchases",p,true);
+      var hasGoals=this._obRows("goals",p).length>0, hasPurchases=this._obRows("plannedPurchases",p).length>0, hasRealEstate=(re.status==="yes");
+      body+=this._fieldHtml("ob_emergency","Argent à garder pour les urgences",this._plain((p.emergency_target_minor||0),p.profile.main_currency||"USD"),"Ex : 800","text");
+      body+='<p style="margin:-4px 0 13px;color:#8B98A2;font-size:12px;line-height:1.45">Ce montant sert de coussin de sécurité. Mets une cible simple, ou laisse 0 si tu veux décider plus tard.</p>';
+      body+=this._selectHtml("ob_seq","Comment veux-tu avancer ?",fund.mode||"sequential",[{value:"sequential",label:"Un objectif à la fois (plus simple)"},{value:"parallel",label:"Plusieurs objectifs en même temps"}]);
+      body+=this._obDetailsHtml("Ajouter une cagnotte ou un objectif","Exemples : coussin, voyage, apport, épargne décembre. Ouvre seulement si tu as déjà un objectif clair.",this._obRepeatHtml("goals","Objectifs / cagnottes",goalRows,"+ Ajouter un objectif","Ajoute seulement ce que tu connais maintenant."),hasGoals);
+      body+=this._obDetailsHtml("Préparer un achat cash","Exemples : ordinateur, téléphone, meuble. Ouvre seulement si tu veux planifier un achat précis.",this._obRepeatHtml("plannedPurchases","Achats planifiés",purchaseRows,"+ Ajouter un achat","Ajoute un achat cash anti-Klarna, ou laisse vide."),hasPurchases);
+      body+=this._obDetailsHtml("Projet immobilier","Optionnel. Si ce n'est pas ton sujet maintenant, laisse sur Pas encore.",this._selectHtml("ob_re_status","Est-ce que tu prépares un achat immobilier ?",re.status||"not_yet",[{value:"yes",label:"Oui"},{value:"not_yet",label:"Pas encore"},{value:"no",label:"Non"}])+this._fieldHtml("ob_re_price","Prix visé si tu le connais",this._plain(re.target_price_minor||0,p.profile.main_currency||"USD"),"Ex : 230000","text")+this._fieldHtml("ob_re_rate","Taux estimé si tu le connais",String((re.rate_bps||700)/100).replace(".",","),"Ex : 7","text"),hasRealEstate);
     } else {
       body+=this._areaHtml("ob_risk","Où part ton argent sans que tu le voies ?",r.riskAreas,"Ex : fast-food, Apple, essence, achats impulsifs");
       body+=this._fieldHtml("ob_payday","Jour de paie le plus dangereux",r.dangerousPayday,"Ex : vendredi soir","text");

@@ -254,6 +254,26 @@ assert(
   !onboarding._renderOnboarding.toString().includes("Budget mensuel total dettes"),
   "debt onboarding must avoid finance-first budget jargon"
 );
+assert(
+  onboarding._renderOnboarding.toString().includes("Argent à garder pour les urgences"),
+  "goals onboarding must start with a plain emergency-fund prompt"
+);
+assert(
+  onboarding._renderOnboarding.toString().includes("Ajouter une cagnotte ou un objectif"),
+  "goals onboarding must move optional goals into a clear section"
+);
+assert(
+  onboarding._renderOnboarding.toString().includes("Préparer un achat cash"),
+  "planned purchases must be framed as an optional cash purchase section"
+);
+assert(
+  onboarding._renderOnboarding.toString().includes("_obDetailsHtml"),
+  "optional goals onboarding sections must be collapsible"
+);
+assert(
+  !onboarding._renderOnboarding.toString().includes("Mode de financement"),
+  "goals onboarding must avoid abstract funding-mode jargon"
+);
 
 const quickStart = new Component();
 quickStart.props = { mode: "desktop" };
