@@ -36,6 +36,25 @@ The original locked design source should remain unchanged.
 The production Worker is route-only. `workers.dev` is disabled so the app is
 served through the owned domains instead of an extra public Worker subdomain.
 
+The Worker also serves the installable web app assets:
+
+```text
+/manifest.webmanifest
+/sw.js
+/apple-touch-icon.png
+/icons/icon-192.png
+/icons/icon-512.png
+```
+
+The installed app name is `Mon Coffre`.
+
+Phone install steps:
+
+```text
+iPhone Safari -> Share -> Add to Home Screen
+Android Chrome -> menu -> Install app
+```
+
 ## GitHub Actions
 
 Production deployment is handled by `.github/workflows/deploy-cloudflare.yml`.

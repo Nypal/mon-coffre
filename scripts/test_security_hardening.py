@@ -59,6 +59,15 @@ def main() -> int:
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://unpkg.com",
         "font-src 'self' data: blob:",
         "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+        "worker-src 'self'",
+        "manifest-src 'self'",
+        "application/manifest+json",
+        "service-worker-allowed",
+        "/apple-touch-icon.png",
+        "/icons/icon-192.png",
+        "/icons/icon-512.png",
+        "Mon Coffre",
+        "ensurePwaMetadata",
     ]:
         require(marker in builder, f"missing Worker security marker: {marker}", findings)
 
@@ -68,6 +77,14 @@ def main() -> int:
             "strict-transport-security",
             "x-frame-options",
             "frame-ancestors 'none'",
+            "/manifest.webmanifest",
+            "apple-mobile-web-app-title",
+            "ensurePwaMetadata",
+            "serviceWorker.register",
+            "application/manifest+json",
+            "/apple-touch-icon.png",
+            "/icons/icon-192.png",
+            "/icons/icon-512.png",
         ]:
             require(marker in generated, f"generated Worker missing marker: {marker}", findings)
 
@@ -110,6 +127,7 @@ def main() -> int:
                 "checks": [
                     "workers_dev disabled",
                     "Worker security headers configured",
+                    "PWA manifest, install metadata, icons, and service worker configured",
                     "Supabase SDK pinned with SRI",
                     "planned purchase image URLs filtered",
                     "GitHub Actions pinned by SHA",
