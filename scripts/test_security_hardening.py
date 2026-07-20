@@ -56,6 +56,8 @@ def main() -> int:
         "frame-ancestors 'none'",
         "base-uri 'none'",
         "object-src 'none'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://unpkg.com",
+        "font-src 'self' data: blob:",
         "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     ]:
         require(marker in builder, f"missing Worker security marker: {marker}", findings)

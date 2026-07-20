@@ -19,10 +19,12 @@ CSP = (
     "frame-src 'none'; "
     "frame-ancestors 'none'; "
     "form-action 'none'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    # The locked design bundle rehydrates compressed JS/font assets as object URLs
+    # and evaluates the injected DCLogic class through the generated runtime.
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://unpkg.com; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob: https:; "
-    "font-src 'self' data:; "
+    "font-src 'self' data: blob:; "
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co; "
     "worker-src 'none'; "
     "manifest-src 'none'; "
