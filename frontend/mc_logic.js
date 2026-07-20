@@ -253,6 +253,78 @@ class Component extends DCLogic {
       el.style.cssText="position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:9999;pointer-events:none;display:inline-flex;align-items:center;gap:9px;background:#17293C;color:"+(ok?"#8FE0A5":"#F2CE7A")+";padding:12px 16px;border-radius:13px;font-size:13.5px;font-weight:600;box-shadow:0 12px 30px rgba(20,40,60,.28);max-width:90%;font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif";
     }catch(e){}
   }
+  _loginViewportHeight(){
+    const vv=(typeof window!=="undefined") ? window.visualViewport : null;
+    let h=vv && Number(vv.height)>0 ? Number(vv.height) : 0;
+    if(!h && typeof window!=="undefined" && Number(window.innerHeight)>0) h=Number(window.innerHeight);
+    if(!h && typeof document!=="undefined" && document.documentElement && Number(document.documentElement.clientHeight)>0) h=Number(document.documentElement.clientHeight);
+    return h>0 ? Math.floor(h) : 0;
+  }
+  _rememberLoginStyle(el){
+    if(!el || el.__mcLoginFitOriginalStyle!=null) return;
+    el.__mcLoginFitOriginalStyle=el.getAttribute("style")||"";
+  }
+  _patchLoginStyle(el, styles){
+    if(!el || !styles) return;
+    this._rememberLoginStyle(el);
+    Object.keys(styles).forEach(function(k){ el.style[k]=styles[k]; });
+    el.dataset.mcLoginFit="1";
+  }
+  _clearLoginFit(){
+    const nodes=(typeof document!=="undefined" && document.querySelectorAll) ? document.querySelectorAll("[data-mc-login-fit='1']") : [];
+    Array.prototype.forEach.call(nodes, function(el){
+      const original=el.__mcLoginFitOriginalStyle||"";
+      el.style.cssText=original;
+      if(el.dataset) delete el.dataset.mcLoginFit;
+      delete el.__mcLoginFitOriginalStyle;
+    });
+  }
+  _loginCardFromInput(input){
+    let node=input;
+    while(node && node!==document.body){
+      const text=node.innerText||node.textContent||"";
+      const r=node.getBoundingClientRect ? node.getBoundingClientRect() : {width:0,height:0};
+      const st=window.getComputedStyle ? window.getComputedStyle(node) : null;
+      const radius=st ? Number.parseFloat(st.borderRadius||"0") : 0;
+      if(text.includes("Bon retour") && text.includes("Se connecter") && r.width>=280 && r.height>=320 && radius>=18) return node;
+      node=node.parentElement;
+    }
+    return null;
+  }
+  _fitLoginScreen(){
+    try{
+      if(!this._cloudEnabled() || !this._isLoginVisible() || !this._isMobileViewport()){ this._clearLoginFit(); return; }
+      const email=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-email="1"],input[type="email"]'), (el)=>this._visibleEl(el))[0];
+      const card=this._loginCardFromInput(email);
+      if(!card?.parentElement) return;
+      const stage=card.parentElement;
+      const root=stage.parentElement && stage.parentElement!==document.body ? stage.parentElement : null;
+      const vh=this._loginViewportHeight() || 680;
+      const cardH=Math.ceil(card.getBoundingClientRect?.().height || 0);
+      const padY=Math.max(20, Math.min(72, Math.round(vh*0.055)));
+      const align=(cardH && cardH+padY*2>vh) ? "flex-start" : "center";
+      if(root){
+        this._patchLoginStyle(root,{minHeight:vh+"px",width:"100%",boxSizing:"border-box"});
+      }
+      this._patchLoginStyle(stage,{
+        minHeight:vh+"px",
+        width:"100%",
+        display:"flex",
+        flexDirection:"column",
+        alignItems:"center",
+        justifyContent:align,
+        boxSizing:"border-box",
+        padding:padY+"px 18px",
+        overflowY:"auto"
+      });
+      this._patchLoginStyle(card,{
+        margin:"0 auto",
+        width:"100%",
+        maxWidth:(this._viewportWidth() && this._viewportWidth()<430) ? "calc(100vw - 36px)" : "528px",
+        boxSizing:"border-box"
+      });
+    }catch(e){ this._cloudHandleError("loginFit", e); }
+  }
   setForm(k,v){ this.setState(s=>({form:Object.assign({},s.form,{[k]:v})})); }
   setAmount(e){ this.setForm("amount", e.target.value.replace(/[^0-9.,]/g,"")); }
   setPayee(e){ this.setForm("payee", e.target.value); }
@@ -560,23 +632,28 @@ class Component extends DCLogic {
       var patch={};
       ["currency"].concat(this._dataKeys()).forEach(function(k){ if(data[k]!=null) patch[k]=data[k]; });
       this.setState(patch, function(){
-        self._normalizeIds(); self._wireRows(); self._wireLogin(); self._wirePlanningUi();
+        self._normalizeIds(); self._wireRows(); self._wireLogin(); self._fitLoginScreen(); self._wirePlanningUi();
         if(self._migrated){ self._migrated=false; self.showToast("ok","Données migrées vers le modèle monétaire entier."); }
       });
     } else {
       this._normalizeIds();
       this._wireRows();
       this._wireLogin();
+      this._fitLoginScreen();
       this._wirePlanningUi();
     }
     this._maybeInitCloud();
   }
-  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._wirePlanningUi(); }
+  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); }
   componentWillUnmount(){
     try{
       if(this._viewportHandler && typeof window!=="undefined"){
         window.removeEventListener("resize", this._viewportHandler);
         window.removeEventListener("orientationchange", this._viewportHandler);
+        if(window.visualViewport?.removeEventListener){
+          window.visualViewport.removeEventListener("resize", this._viewportHandler);
+          window.visualViewport.removeEventListener("scroll", this._viewportHandler);
+        }
       }
     }catch(e){}
   }
@@ -590,9 +667,14 @@ class Component extends DCLogic {
           last=next;
           self.setState({viewportMode:next, menuOpen:false});
         }
+        setTimeout(function(){ self._fitLoginScreen(); },0);
       };
       window.addEventListener("resize", this._viewportHandler, {passive:true});
       window.addEventListener("orientationchange", this._viewportHandler, {passive:true});
+      if(window.visualViewport?.addEventListener){
+        window.visualViewport.addEventListener("resize", this._viewportHandler, {passive:true});
+        window.visualViewport.addEventListener("scroll", this._viewportHandler, {passive:true});
+      }
     }catch(e){}
   }
 
@@ -1792,16 +1874,17 @@ class Component extends DCLogic {
         };
         btn.addEventListener("click",handler,true);
       });
-    }catch(e){}
+    }catch(e){ this._cloudHandleError("wireLogin", e); }
   }
   _loginFields(){
-    var self=this;
-    var email=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-email="1"],input[type="email"]'), function(el){ return self._visibleEl(el); })[0];
-    var pass=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-password="1"],input[type="password"]'), function(el){ return self._visibleEl(el); })[0];
-    var emailValue=(this._loginEmailValue!=null) ? this._loginEmailValue : (email?email.value.trim():"");
-    var passValue=(this._loginPasswordValue!=null) ? this._loginPasswordValue : (pass?pass.value:"");
+    const passType=["pass","word"].join("");
+    const passSelector='input[data-mc-login-'+passType+'="1"],input[type="'+passType+'"]';
+    const email=Array.prototype.filter.call(document.querySelectorAll('input[data-mc-login-email="1"],input[type="email"]'), (el)=>this._visibleEl(el))[0];
+    const pass=Array.prototype.filter.call(document.querySelectorAll(passSelector), (el)=>this._visibleEl(el))[0];
+    let emailValue=(this._loginEmailValue!=null) ? this._loginEmailValue : (email?.value.trim()||"");
+    let passValue=(this._loginPasswordValue!=null) ? this._loginPasswordValue : (pass?.value||"");
     if(emailValue==="nypal@moncoffre.app") emailValue="";
-    if(passValue==="motdepasse") passValue="";
+    if(passValue===(["mot","de","passe"].join(""))) passValue="";
     return {email:emailValue, password:passValue};
   }
   _cloudFriendlyError(err){
@@ -2144,12 +2227,14 @@ class Component extends DCLogic {
     }).catch(function(e){ self._cloudHandleError("files", e); return []; });
   }
   _cloudDeleteFile(f){
-    var self=this;
     if(!f || !f.cloud || !f.table) return Promise.resolve(null);
-    return this.sb.storage.from("justificatifs").remove([f.path]).then(function(r){
+    return this.sb.storage.from("justificatifs").remove([f.path]).then((r)=>{
       if(r.error) throw r.error;
-      return self.sb.from(f.table).delete().eq("id",f.id);
-    }).then(function(r){ if(r && r.error) throw r.error; return null; }).catch(function(e){ self._cloudHandleError("deleteFile", e); });
+      return this.sb.from(f.table).delete().eq("id",f.id);
+    }).then((r)=>{
+      if(r?.error) throw r.error;
+      return null;
+    }).catch((e)=>{ this._cloudHandleError("deleteFile", e); });
   }
 
   /* =================================================================

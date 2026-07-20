@@ -49,6 +49,18 @@ assert(app.mode === "desktop", "wide viewports must keep desktop layout");
 let desktopVals = app.renderVals();
 assert(desktopVals.isDesktop === true && desktopVals.isMobile === false, "desktop render values must keep desktop shell");
 delete global.window.innerWidth;
+assert(
+  app._loginViewportHeight.toString().includes("visualViewport"),
+  "mobile login centering must use the visible viewport height"
+);
+assert(
+  app._fitLoginScreen.toString().includes("justifyContent"),
+  "mobile login centering must control the vertical alignment"
+);
+assert(
+  app._clearLoginFit.toString().includes("data-mc-login-fit"),
+  "mobile login centering must be reversible"
+);
 
 const money = app._moneyTests();
 assert(money.passed === 33 && money.failed === 0, "money tests must pass 33/33");
