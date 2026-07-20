@@ -107,6 +107,83 @@ app.state.financialPlan = app._mergePlan({
   snowball: { monthly_budget_minor: 10000 },
 });
 assert(app._snowballPlan()[0].name === "Small debt", "snowball must start with the smallest balance");
+let debtDecision = app._debtDecisionPlan();
+assert(debtDecision.strategy === "snowball", "plain debt plan must recommend snowball by default");
+assert(debtDecision.targetName === "Small debt", "snowball decision must target the smallest balance");
+assert(debtDecision.action.includes("surplus"), "debt decision must explain where the surplus goes");
+
+app.state.debts = [
+  {
+    id: "low-small",
+    name: "Small low interest",
+    total_amount_minor: 25000,
+    paid_amount_minor: 0,
+    minimum_minor: 2500,
+    apr_bps: 800,
+    currency: "USD",
+  },
+  {
+    id: "high-card",
+    name: "High interest card",
+    total_amount_minor: 60000,
+    paid_amount_minor: 0,
+    minimum_minor: 3000,
+    apr_bps: 2499,
+    currency: "USD",
+  },
+];
+app.state.financialPlan = app._mergePlan({
+  onboarding: { completed: true },
+  snowball: { monthly_budget_minor: 10000 },
+});
+debtDecision = app._debtDecisionPlan();
+assert(debtDecision.strategy === "avalanche", "high interest debt must trigger the cost-first strategy");
+assert(debtDecision.targetName === "High interest card", "avalanche decision must target the highest APR debt");
+assert(debtDecision.debtFreeStr !== "budget à définir", "debt decision must project a debt-free date when budget exists");
+
+app.state.debts = [
+  {
+    id: "late-card",
+    name: "Late card",
+    total_amount_minor: 40000,
+    paid_amount_minor: 0,
+    minimum_minor: 2000,
+    apr_bps: 900,
+    currency: "USD",
+    status: "En retard",
+  },
+  {
+    id: "expensive-card",
+    name: "Expensive but current",
+    total_amount_minor: 30000,
+    paid_amount_minor: 0,
+    minimum_minor: 2000,
+    apr_bps: 2999,
+    currency: "USD",
+    status: "À jour",
+  },
+];
+debtDecision = app._debtDecisionPlan();
+assert(debtDecision.strategy === "urgent", "overdue debt must take priority over APR optimization");
+assert(debtDecision.targetName === "Late card", "urgent decision must target the overdue debt first");
+
+const planWithDebtMeta = app._planWithDebtMeta(app._mergePlan({ onboarding: { completed: true } }), {
+  name: "New card",
+  total_amount_minor: 50000,
+  minimum_minor: 2500,
+  apr_bps: 1999,
+  due: "15 août 2026",
+}, "USD");
+assert(planWithDebtMeta.structured.debts[0].minimum === "25", "new debt minimum must be kept in financial plan metadata");
+assert(planWithDebtMeta.structured.debts[0].apr === "19,99", "new debt APR must be kept in financial plan metadata");
+assert(
+  app._wireDebtDecisionUi.toString().includes("mc-debt-decision-inline"),
+  "debts page must expose the decision aid inline"
+);
+assert(
+  app._openPlanPanel.toString().includes("Plan d’attaque dettes"),
+  "financial plan panel must show the debt attack plan"
+);
 
 app.state.savings = [
   {
@@ -360,6 +437,7 @@ console.log(
         "mandatory onboarding gate",
         "lifestyle income fallback",
         "debt snowball",
+        "debt decision aid",
         "sequential funding",
         "planned purchases",
         "real estate projection",

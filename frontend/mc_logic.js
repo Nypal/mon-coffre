@@ -403,9 +403,10 @@ class Component extends DCLogic {
     const cur=this._rc(g), p=this.pct(g.current_amount_minor,g.target_amount_minor), done=p>=100;
     return Object.assign({},g,{pctNum:p,pctStr:p+" %",savedStr:this.mFmt(g.current_amount_minor,cur),priceStr:this.mFmt(g.target_amount_minor,cur),remainStr:this.mFmt(Math.max(0,g.target_amount_minor-g.current_amount_minor),cur),done:done,barStyle:this.bar(p,done?this.C.green:this.C.brand),statusSty:this.statusStyle(g.status),prioSty:this.prioStyle(g.priority),msg: done?"Objectif atteint. Tu peux acheter cet objet sans toucher à ton budget principal.":"Achat non recommandé pour le moment.",msgSty: Object.assign({display:"flex",alignItems:"flex-start",gap:"9px",borderRadius:"13px",padding:"12px 13px",fontSize:"12.5px",fontWeight:600,lineHeight:"1.4"}, done?{color:"#2C6B41",background:"#E7F3EB",border:"1px solid #CBE6D3"}:{color:"#8A6417",background:"#F8F1DC",border:"1px solid #EBDCAF"}),onCotiser:()=>this.cotiser(g.name)});
   }
-  dDebt(g){
+  dDebt(g, decision){
     const cur=this._rc(g), p=this.pct(g.paid_amount_minor,g.total_amount_minor), rem=Math.max(0,g.total_amount_minor-g.paid_amount_minor);
-    return Object.assign({},g,{pctNum:p,pctStr:p+" %",paidStr:this.mFmt(g.paid_amount_minor,cur),totalStr:this.mFmt(g.total_amount_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,g.status==="En retard"?"#C99A38":this.C.green),statusSty:this.statusStyle(g.status),late:g.status==="En retard",open:rem>0,onPay:()=>this.rembourserDette(g.name)});
+    const detail=decision && decision.byId ? decision.byId[g.id] : null;
+    return Object.assign({},g,{pctNum:p,pctStr:p+" %",paidStr:this.mFmt(g.paid_amount_minor,cur),totalStr:this.mFmt(g.total_amount_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,g.status==="En retard"?"#C99A38":this.C.green),statusSty:this.statusStyle(g.status),late:g.status==="En retard",open:rem>0,decisionRank:detail?detail.rank:null,decisionPayStr:detail?this.mFmt(detail.monthly,cur):"",decisionDoneStr:detail&&detail.done?detail.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}):"Budget à définir",decisionBadge:detail&&detail.rank===1?"Priorité maintenant":(detail?"Ensuite":""),onPay:()=>this.rembourserDette(g.name)});
   }
   dLoan(g){
     const cur=this._rc(g), p=this.pct(g.amount_repaid_minor,g.amount_lent_minor), rem=Math.max(0,g.amount_lent_minor-g.amount_repaid_minor);
@@ -434,8 +435,9 @@ class Component extends DCLogic {
     const accCount=acc.filter(a=>self._same(a)).length, incCount=inc.filter(i=>self._same(i)).length, expCount=exp.filter(e=>self._same(e)).length;
     const savCount=sav.filter(g=>self._same(g)).length, potCount=pot.filter(g=>self._same(g)).length, debCount=deb.filter(d=>self._same(d)).length, loanCount=loa.filter(l=>self._same(l)).length;
     const hasUserData=!!(accCount||incCount||expCount||savCount||potCount||debCount||loanCount);
+    const debtDecision=this._debtDecisionPlan();
     const plural=(n,s,p)=>n+" "+(n>1?p:s);
-    const coachLine=!hasUserData?"Ajoute ton premier revenu pour commencer.":(!incCount?"Ajoute ton premier revenu pour calculer ton argent disponible.":(!expCount?"Ajoute une dépense fixe pour rendre ton plan plus précis.":"Tu avances bien ce mois-ci. Ton coffre est stable."));
+    const coachLine=!hasUserData?"Ajoute ton premier revenu pour commencer.":(debtDecision.ok?debtDecision.coachLine:(!incCount?"Ajoute ton premier revenu pour calculer ton argent disponible.":(!expCount?"Ajoute une dépense fixe pour rendre ton plan plus précis.":"Tu avances bien ce mois-ci. Ton coffre est stable.")));
 
     const navList=this.navMeta().map(n=>{ const active=page===n.id; return {label:n.label,icon:n.icon,onClick:()=>this.go(n.id),
       style:{display:"flex",alignItems:"center",gap:"12px",padding:"11px 12px",borderRadius:"12px",width:"100%",textAlign:"left",cursor:"pointer",fontSize:"14px",fontWeight:active?700:600,transition:"background .15s",background:active?C.brandBg:"transparent",color:active?C.brand:C.ink2},
@@ -515,7 +517,7 @@ class Component extends DCLogic {
       monthIncomeStr:this.mFmt(monthIncome,cur),
       savingsView: sav.map(g=>this.dSav(g)), savingsTotalStr:this.mFmt(totalSavings,cur), savingsTargetStr:this.mFmt(this._sum(sav,"target_amount_minor"),cur),
       potsView: pot.map(g=>this.dPot(g)),
-      debtsView: deb.map(g=>this.dDebt(g)), debtTotalStr:this.mFmt(totalDebt,cur),
+      debtsView: deb.map(g=>this.dDebt(g,debtDecision)), debtTotalStr:this.mFmt(totalDebt,cur), debtDecision:debtDecision,
       loansView: loa.map(g=>this.dLoan(g)), lentTotalStr:this.mFmt(totalLent,cur), lentBackStr:this.mFmt(this._sum(loa,"amount_repaid_minor"),cur),
       incMonths, incSources, expMonths, expCats, catBreak, incomeMonths, trendLine, trendArea, trendLabels,
       demoIncome:()=>this.openForm("income"),
@@ -632,7 +634,7 @@ class Component extends DCLogic {
       var patch={};
       ["currency"].concat(this._dataKeys()).forEach(function(k){ if(data[k]!=null) patch[k]=data[k]; });
       this.setState(patch, function(){
-        self._normalizeIds(); self._wireRows(); self._wireLogin(); self._fitLoginScreen(); self._wirePlanningUi();
+        self._normalizeIds(); self._wireRows(); self._wireLogin(); self._fitLoginScreen(); self._wirePlanningUi(); self._wireDebtDecisionUi();
         if(self._migrated){ self._migrated=false; self.showToast("ok","Données migrées vers le modèle monétaire entier."); }
       });
     } else {
@@ -641,10 +643,11 @@ class Component extends DCLogic {
       this._wireLogin();
       this._fitLoginScreen();
       this._wirePlanningUi();
+      this._wireDebtDecisionUi();
     }
     this._maybeInitCloud();
   }
-  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); }
+  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); this._wireDebtDecisionUi(); }
   componentWillUnmount(){
     try{
       if(this._viewportHandler && typeof window!=="undefined"){
@@ -999,22 +1002,122 @@ class Component extends DCLogic {
     var pct=base>0?Math.round((cur-base)/base*100):0;
     return {baseline:base,current:cur,pct:pct,alert:base>0 && pct>=Math.trunc(Number(p.lifestyle.threshold_pct)||15)};
   }
-  _snowballPlan(){
-    var self=this, p=this._plan(), budget=Math.trunc(Number(p.snowball.monthly_budget_minor)||0);
-    var debts=(this.state.debts||[]).filter(function(d){ return self._same(d) && Math.max(0,(Number(d.total_amount_minor)||0)-(Number(d.paid_amount_minor)||0))>0; })
-      .map(function(d){ return Object.assign({},d,{remain:Math.max(0,(Number(d.total_amount_minor)||0)-(Number(d.paid_amount_minor)||0)),minimum_minor:Math.trunc(Number(d.minimum_minor)||0)}); })
-      .sort(function(a,b){ return a.remain-b.remain; });
-    var date=new Date(), freed=0, rows=[];
-    debts.forEach(function(d,i){
-      var pay=Math.max(1,d.minimum_minor||0);
-      if(i===0) pay=Math.max(pay,budget||pay);
-      else pay=Math.max(pay,(d.minimum_minor||0)+freed);
-      var months=Math.max(1,Math.ceil(d.remain/pay));
-      date=new Date(date.getFullYear(),date.getMonth()+months,1);
-      freed+=d.minimum_minor||0;
-      rows.push({name:d.name||d.creditor||"Dette",remain:d.remain,monthly:pay,done:date});
+  _debtRemaining(d){
+    return Math.max(0, Math.trunc(Number(d.total_amount_minor)||0)-Math.trunc(Number(d.paid_amount_minor)||0));
+  }
+  _debtDueTime(d){
+    const iso=this._isoDateMaybe(d && d.due);
+    if(!iso) return Number.MAX_SAFE_INTEGER;
+    const t=new Date(iso+"T00:00:00").getTime();
+    return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER;
+  }
+  _debtDecisionRows(){
+    return (this.state.debts||[]).filter((d)=>this._same(d) && this._debtRemaining(d)>0).map((d)=>{
+      const remain=this._debtRemaining(d);
+      const minimum=Math.max(0, Math.trunc(Number(d.minimum_minor)||0));
+      const apr=Math.max(0, Math.trunc(Number(d.apr_bps)||0));
+      const status=String(d.status||"");
+      return Object.assign({},d,{remain:remain,minimum_minor:Math.min(minimum,remain),apr_bps:apr,due_time:this._debtDueTime(d),overdue:status.toLowerCase().includes("retard")});
     });
-    return rows;
+  }
+  _debtMonthlyBudget(rows){
+    const totalMinimum=(rows||[]).reduce((sum,d)=>sum+(Math.trunc(Number(d.minimum_minor)||0)),0);
+    const planBudget=Math.max(0, Math.trunc(Number(this._plan().snowball&&this._plan().snowball.monthly_budget_minor)||0));
+    return Math.max(planBudget,totalMinimum);
+  }
+  _debtStrategyLabel(strategy){
+    const labels={urgent:"Stop retard",avalanche:"Coût le plus cher",snowball:"Boule de neige"};
+    return labels[strategy]||labels.snowball;
+  }
+  _debtSortRows(rows, strategy){
+    const copy=(rows||[]).slice();
+    if(strategy==="urgent"){
+      copy.sort((a,b)=>(a.overdue===b.overdue?0:(a.overdue?-1:1)) || (a.due_time-b.due_time) || (b.apr_bps-a.apr_bps) || (a.remain-b.remain));
+      return copy;
+    }
+    if(strategy==="avalanche"){
+      copy.sort((a,b)=>(b.apr_bps-a.apr_bps) || (a.remain-b.remain));
+      return copy;
+    }
+    copy.sort((a,b)=>(a.remain-b.remain) || (b.apr_bps-a.apr_bps));
+    return copy;
+  }
+  _debtPlanForStrategy(rows, monthlyBudget, strategy){
+    const sorted=this._debtSortRows(rows, strategy);
+    const totalMinimum=sorted.reduce((sum,d)=>sum+d.minimum_minor,0);
+    const extra=Math.max(0, Math.trunc(Number(monthlyBudget)||0)-totalMinimum);
+    let freedMinimum=0;
+    let cursor=new Date();
+    return sorted.map((d,index)=>{
+      const fallback=index===0 && !totalMinimum ? Math.trunc(Number(monthlyBudget)||0) : 0;
+      const monthly=d.minimum_minor+extra+freedMinimum+fallback;
+      const months=monthly>0 ? Math.max(1, Math.ceil(d.remain/monthly)) : 0;
+      const done=months>0 ? new Date(cursor.getFullYear(), cursor.getMonth()+months, 1) : null;
+      if(done) cursor=done;
+      freedMinimum+=d.minimum_minor;
+      return Object.assign({},d,{rank:index+1,monthly:monthly,months:months,done:done});
+    });
+  }
+  _debtChooseStrategy(rows){
+    if(!(rows&&rows.length)) return "snowball";
+    if(rows.some((d)=>d.overdue)) return "urgent";
+    const highest=rows.slice().sort((a,b)=>b.apr_bps-a.apr_bps)[0];
+    const smallest=rows.slice().sort((a,b)=>a.remain-b.remain)[0];
+    if(highest && smallest && highest.apr_bps>=1800 && (highest.apr_bps-(smallest.apr_bps||0))>=600) return "avalanche";
+    return "snowball";
+  }
+  _debtWhy(strategy, target){
+    if(!target) return "Ajoute tes dettes pour que Mon Coffre puisse te guider.";
+    if(strategy==="urgent") return "Cette dette est en retard ou arrive en premier. On évite les frais et la pression avant tout.";
+    if(strategy==="avalanche") return "Cette dette coûte le plus cher en intérêts. La réduire bouche la plus grosse fuite d'argent.";
+    return "Cette dette est la plus petite à terminer. La solder libère vite un paiement mensuel pour attaquer la suivante.";
+  }
+  _debtDecisionPlan(strategyOverride){
+    const rows=this._debtDecisionRows();
+    const cur=this.state.currency;
+    const totalRemain=rows.reduce((sum,d)=>sum+d.remain,0);
+    const totalMinimum=rows.reduce((sum,d)=>sum+d.minimum_minor,0);
+    const monthlyBudget=this._debtMonthlyBudget(rows);
+    const extra=Math.max(0, monthlyBudget-totalMinimum);
+    const strategy=strategyOverride||this._debtChooseStrategy(rows);
+    const sequence=this._debtPlanForStrategy(rows, monthlyBudget, strategy);
+    const target=sequence[0]||null;
+    const lastDone=sequence.filter((d)=>!!d.done).slice(-1)[0]||null;
+    const byId={};
+    sequence.forEach((d)=>{ if(d.id) byId[d.id]=d; });
+    if(!rows.length){
+      return {ok:false,byId:byId,sequence:[],strategy:strategy,strategyLabel:this._debtStrategyLabel(strategy),totalRemain:0,totalMinimum:0,monthlyBudget:0,extra:0,coachLine:"Ajoute une dette pour recevoir une stratégie de remboursement."};
+    }
+    const targetName=target.name||target.creditor||"cette dette";
+    const payLine=monthlyBudget<=0
+      ? "Commence par définir combien tu peux payer par mois, puis attaque "+targetName+" en premier."
+      : (extra>0 ? "Paie les minimums ailleurs, puis mets "+this.mFmt(extra,cur)+" de surplus sur "+targetName+"." : "Paie chaque minimum à temps. Dès que tu trouves un surplus, mets-le sur "+targetName+".");
+    const doneText=target&&target.done ? target.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}) : "budget à définir";
+    const debtFreeText=lastDone&&lastDone.done ? lastDone.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}) : "budget à définir";
+    return {
+      ok:true,
+      byId:byId,
+      sequence:sequence,
+      strategy:strategy,
+      strategyLabel:this._debtStrategyLabel(strategy),
+      totalRemain:totalRemain,
+      totalMinimum:totalMinimum,
+      monthlyBudget:monthlyBudget,
+      extra:extra,
+      target:target,
+      targetName:targetName,
+      targetPayStr:target?this.mFmt(target.monthly,cur):this.mFmt(0,cur),
+      targetDoneStr:doneText,
+      debtFreeStr:debtFreeText,
+      headline:"Attaque d'abord "+targetName,
+      why:this._debtWhy(strategy,target),
+      action:payLine,
+      coachLine:"Priorité dette : "+targetName+" avec la stratégie "+this._debtStrategyLabel(strategy).toLowerCase()+"."
+    };
+  }
+  _snowballPlan(){
+    const rows=this._debtDecisionRows();
+    return this._debtPlanForStrategy(rows, this._debtMonthlyBudget(rows), "snowball");
   }
   _sequentialFunding(){
     var self=this, goals=[];
@@ -1046,6 +1149,21 @@ class Component extends DCLogic {
       var high=Math.round((Number(g.target_amount_minor)||0)*(1+(p.plannedPurchase.finance_high_pct||17)/100));
       return {goal:g,remaining:remaining,weekly:weekly,eta:eta,financeLow:low,financeHigh:high,savedLow:Math.max(0,low-(Number(g.target_amount_minor)||0)),savedHigh:Math.max(0,high-(Number(g.target_amount_minor)||0))};
     });
+  }
+  _planWithDebtMeta(plan, debt, cur){
+    const next=this._mergePlan(plan);
+    const rows=((next.structured&&next.structured.debts)||[]).slice();
+    const name=debt.name||debt.creditor||"Dette";
+    const row={name:name,balance:this._plain(debt.total_amount_minor||0,cur),minimum:this._plain(debt.minimum_minor||0,cur),apr:String((Math.trunc(Number(debt.apr_bps)||0))/100).replace(".",","),due:debt.due||"Variable"};
+    const key=String(name).toLowerCase();
+    const index=rows.findIndex((r)=>String(r.name||"").toLowerCase()===key);
+    if(index>=0) rows[index]=Object.assign({},rows[index],row);
+    else rows.push(row);
+    next.structured=next.structured||{};
+    next.raw=next.raw||{};
+    next.structured.debts=rows;
+    next.raw.debts=this._obSerialize("debts",rows);
+    return next;
   }
   _monthlyReview(){
     var self=this, cur=this.state.currency, now=new Date(), month=this._moisLong[now.getMonth()], prev=this._moisLong[new Date(now.getFullYear(),now.getMonth()-1,1).getMonth()];
@@ -1327,13 +1445,20 @@ class Component extends DCLogic {
         {key:"creditor",label:"Créancier",type:"text",required:true,placeholder:"À qui dois-tu cet argent ?"},
         {key:"total",label:"Montant total",type:"amount",required:true},
         {key:"paid",label:"Déjà payé",type:"number",value:"0"},
+        {key:"minimum",label:"Minimum mensuel",type:"amount",required:true},
+        {key:"apr",label:"Taux si tu le connais (%)",type:"number",opt:true,value:"0"},
         {key:"due",label:"Prochaine échéance",type:"text",opt:true,placeholder:"Ex : 15 août 2026"}
       ]);
       this._mcModal("Ajouter une dette", Fd.el, function(){
         var v=Fd.values(); if(!v.name) return "Indique un nom."; if(!v.creditor) return "Indique le créancier.";
         var tot=P(v.total); if(tot<=0) return "Indique le montant total.";
         var pd=P(v.paid);
-        self.setState(function(s){ return {debts:s.debts.concat([{id:self._uid(),name:v.name,creditor:v.creditor,total_amount_minor:tot,paid_amount_minor:pd,currency:CUR,due:v.due||"—",status:(pd>=tot?"Soldée":"À jour")}])}; }, function(){ self._persist(); });
+        var min=P(v.minimum); if(min<=0) return "Indique le minimum mensuel.";
+        var apr=Math.max(0,Math.round(self._numInput(v.apr)*100)||0);
+        self.setState(function(s){
+          var debt={id:self._uid(),name:v.name,creditor:v.creditor,total_amount_minor:tot,paid_amount_minor:pd,currency:CUR,due:v.due||"—",status:(pd>=tot?"Soldée":"À jour"),minimum_minor:min,apr_bps:apr};
+          return {debts:s.debts.concat([debt]),financialPlan:self._planWithDebtMeta(s.financialPlan,debt,CUR)};
+        }, function(){ self._persist(); });
         self.showToast("ok","Dette enregistrée — suivi clair et serein.");
       }, "Ajouter la dette");
     }
@@ -1515,6 +1640,36 @@ class Component extends DCLogic {
       } else if(existing){ existing.remove(); }
     }catch(e){}
   }
+  _wireDebtDecisionUi(){
+    try{
+      var existing=document.getElementById("mc-debt-decision-inline");
+      if(this.state.page!=="debts"){
+        if(existing) existing.remove();
+        return;
+      }
+      var debtPlan=this._debtDecisionPlan();
+      var matches=Array.prototype.slice.call(document.querySelectorAll("div")).filter(function(el){
+        var txt=String(el.textContent||"");
+        return txt.includes("Total à rembourser") && txt.includes("Rien d'alarmant");
+      }).sort(function(a,b){ return String(a.textContent||"").length-String(b.textContent||"").length; });
+      var totalCard=matches[0];
+      var host=totalCard&&totalCard.parentElement;
+      if(!host) return;
+      if(existing) existing.remove();
+      var panel=document.createElement("div");
+      panel.id="mc-debt-decision-inline";
+      panel.style.cssText="background:#fff;border:1px solid #E7E9E4;border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(20,40,60,.04)";
+      if(debtPlan.ok){
+        panel.innerHTML='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px"><div style="min-width:0;flex:1"><div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:5px">Aide à la décision</div><h3 style="margin:0;font-size:18px;font-weight:900;color:#17293C">'+this._esc(debtPlan.headline)+'</h3></div><span style="font-size:12px;font-weight:900;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:6px 10px">'+this._esc(debtPlan.strategyLabel)+'</span></div><p style="margin:0 0 11px;font-size:13px;line-height:1.45;color:#5A6B78">'+this._esc(debtPlan.why)+'</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:10px">'+this._metricCard("Dette cible",debtPlan.targetName,"À traiter maintenant")+this._metricCard("Paiement cible",debtPlan.targetPayStr,"Minimum + surplus")+this._metricCard("Fin estimée",debtPlan.targetDoneStr,"Si le rythme tient")+'</div><div style="font-size:13px;line-height:1.45;color:#17293C;background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:11px 12px;margin-bottom:11px">'+this._esc(debtPlan.action)+'</div><button id="mc-debt-plan-open" type="button" style="width:100%;padding:12px 13px;border-radius:12px;background:#EAF1F8;color:#1E5081;font-size:13.5px;font-weight:900;border:1px solid #D3E0EE;cursor:pointer">Voir toute la projection</button>';
+      } else {
+        panel.innerHTML='<div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:5px">Aide à la décision</div><h3 style="margin:0 0 7px;font-size:18px;font-weight:900;color:#17293C">Ajoute tes dettes</h3><p style="margin:0;font-size:13px;line-height:1.45;color:#5A6B78">Dès que tu ajoutes le montant restant, le minimum mensuel et le taux si tu le connais, Mon Coffre te dira quoi payer en premier.</p>';
+      }
+      if(totalCard.nextSibling) host.insertBefore(panel,totalCard.nextSibling);
+      else host.appendChild(panel);
+      var open=document.getElementById("mc-debt-plan-open");
+      if(open) open.onclick=()=>this._openPlanPanel();
+    }catch(e){}
+  }
   _onboardingStepMeta(){
     return [
       {title:"Démarrage",sub:"Devise, revenu actuel et rythme de paie. Deux minutes suffisent pour commencer."},
@@ -1651,9 +1806,10 @@ class Component extends DCLogic {
     return '<div style="display:flex;flex-direction:column;gap:8px">'+rows.join("")+'</div>';
   }
   _openPlanPanel(){
-    var self=this, p=this._plan(), life=this._lifestyleSignal(), snow=this._snowballPlan(), seq=this._sequentialFunding(), rev=this._monthlyReview(), re=this._realEstateProjection(), planned=this._plannedPurchaseViews();
+    var self=this, p=this._plan(), life=this._lifestyleSignal(), debtPlan=this._debtDecisionPlan(), seq=this._sequentialFunding(), rev=this._monthlyReview(), re=this._realEstateProjection(), planned=this._plannedPurchaseViews();
     var body=document.createElement("div");
-    var snowRows=snow.map((x)=>'<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:12px"><div><b>'+this._esc(x.name)+'</b><div style="font-size:12px;color:#8B98A2">'+this._esc("Reste "+this.mFmt(x.remain,this.state.currency))+'</div></div><div style="text-align:right;font-size:12.5px;color:#5A6B78">'+this._esc(this.mFmt(x.monthly,this.state.currency)+"/mois")+"<br>"+this._esc(x.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}))+'</div></div>');
+    var debtRows=debtPlan.sequence.map((x)=>'<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#FAFBF9;border:1px solid #EFF1EC;border-radius:12px"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11px;font-weight:900;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:4px 8px">#'+this._esc(x.rank)+'</span><b>'+this._esc(x.name)+'</b></div><div style="font-size:12px;color:#8B98A2;margin-top:4px">'+this._esc("Reste "+this.mFmt(x.remain,this.state.currency)+" · minimum "+this.mFmt(x.minimum_minor,this.state.currency))+'</div></div><div style="text-align:right;font-size:12.5px;color:#5A6B78;min-width:116px">'+this._esc(this.mFmt(x.monthly,this.state.currency)+"/mois")+"<br>"+this._esc(x.done?x.done.toLocaleDateString("fr-FR",{month:"long",year:"numeric"}):"Budget à définir")+'</div></div>');
+    var debtDecisionHtml=debtPlan.ok?'<div style="background:#fff;border:1px solid #E1E4DE;border-radius:16px;padding:14px;margin-bottom:12px"><div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:6px">Décision recommandée</div><h3 style="margin:0 0 7px;font-size:18px;font-weight:900;color:#17293C">'+this._esc(debtPlan.headline)+'</h3><p style="margin:0 0 10px;font-size:13px;line-height:1.45;color:#5A6B78">'+this._esc(debtPlan.why)+'</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin-bottom:10px">'+this._metricCard("Méthode",debtPlan.strategyLabel,"Choisie automatiquement")+this._metricCard("À payer sur cible",debtPlan.targetPayStr,"Ce mois-ci")+this._metricCard("Dette cible finie",debtPlan.targetDoneStr,"Estimation")+'</div><div style="font-size:13px;line-height:1.45;color:#17293C;background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:11px 12px">'+this._esc(debtPlan.action)+'<br>'+this._esc("Quand une dette est soldée, son minimum rejoint la suivante : le panier fuit moins chaque mois.")+'</div></div>':'';
     var plannedRows=planned.map((x)=>{
       var safeImg=this._safeImageUrl(x.goal.image_url);
       var img=safeImg?'<img src="'+this._esc(safeImg)+'" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid #E1E4DE">':"";
@@ -1665,8 +1821,9 @@ class Component extends DCLogic {
     if((p.realEstate&&p.realEstate.status)!=="no"){
       realEstateHtml='<section style="margin-top:14px;background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Projet immobilier</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">'+this._metricCard("Mensualité max",this.mFmt(re.maxPayment,this.state.currency),"Règle 28/36")+this._metricCard("Prix estimé max","~"+this.mFmt(re.maxPrice,this.state.currency),"Avec apport lié")+this._metricCard("Apport",this.mFmt(re.downPayment,this.state.currency),"Cagnotte liée")+'</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:12px">'+this._rangeHtml("mc_sim_income","Et si revenu +",this._plain(p.simulator.extra_income_minor||0,this.state.currency),0,3000,50,this.state.currency+"/mois")+this._rangeHtml("mc_sim_debt","Et si dette libérée/mois",this._plain(p.simulator.freed_debt_minor||0,this.state.currency),0,1000,10,this.state.currency+"/mois")+this._rangeHtml("mc_sim_rate","Et si taux (%)",String((p.simulator.rate_bps||650)/100).replace(",","."),3,12,.1,"%")+'</div><p style="margin:2px 0 0;color:#8B98A2;font-size:11.5px;line-height:1.45">Estimation basée sur les ratios 28/36 couramment utilisés par les prêteurs américains. Chaque banque a ses propres critères. Ceci n’est pas un conseil financier.</p></section>';
     }
-    body.innerHTML='<div style="'+this._plannerStyle()+'"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">'+this._metricCard("Anti-inflation",life.baseline?((life.pct>=0?"+":"")+life.pct+" %"):"À calibrer",life.alert?"Tes dépenses montent avec le revenu.":"Baseline suivie.")+this._metricCard("Mode cagnottes",(p.funding.mode==="sequential"?"Séquentiel":"Parallèle"),seq.active?("Objectif actif : "+seq.active.name):"Aucun objectif actif")+this._metricCard("Bilan "+rev.month,this.mFmt(rev.income-rev.expenses,this.state.currency),"Revenus - dépenses")+'</div><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Boule de neige dettes</h3>'+this._listHtml(snowRows,"Ajoute des dettes avec minimum mensuel pour voir la projection.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Achats planifiés anti-Klarna</h3>'+this._listHtml(plannedRows,"Ajoute un achat planifié dans l’onboarding ou les cagnottes.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Bilan mensuel automatique</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><b style="font-size:13px">Revenus par source</b>'+this._listHtml(incomeRows,"Aucun revenu ce mois.")+'</div><div><b style="font-size:13px">Dépenses par catégorie</b>'+this._listHtml(expenseRows,"Aucune dépense ce mois.")+'</div></div><div style="margin-top:10px;font-size:12.5px;color:#5A6B78">'+this._esc("Écart dépenses vs mois précédent : "+this.mFmt(rev.delta,this.state.currency))+'</div></section>'+realEstateHtml+'</div>';
+    body.innerHTML='<div style="'+this._plannerStyle()+'"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">'+this._metricCard("Anti-inflation",life.baseline?((life.pct>=0?"+":"")+life.pct+" %"):"À calibrer",life.alert?"Tes dépenses montent avec le revenu.":"Baseline suivie.")+this._metricCard("Mode cagnottes",(p.funding.mode==="sequential"?"Séquentiel":"Parallèle"),seq.active?("Objectif actif : "+seq.active.name):"Aucun objectif actif")+this._metricCard("Bilan "+rev.month,this.mFmt(rev.income-rev.expenses,this.state.currency),"Revenus - dépenses")+'</div><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Plan d’attaque dettes</h3>'+debtDecisionHtml+this._listHtml(debtRows,"Ajoute tes dettes avec minimum mensuel pour recevoir une stratégie claire.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Achats planifiés anti-Klarna</h3>'+this._listHtml(plannedRows,"Ajoute un achat planifié dans l’onboarding ou les cagnottes.")+'</section><section style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:18px;padding:14px;margin-bottom:14px"><h3 style="margin:0 0 10px;font-size:16px;font-weight:900">Bilan mensuel automatique</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><b style="font-size:13px">Revenus par source</b>'+this._listHtml(incomeRows,"Aucun revenu ce mois.")+'</div><div><b style="font-size:13px">Dépenses par catégorie</b>'+this._listHtml(expenseRows,"Aucune dépense ce mois.")+'</div></div><div style="margin-top:10px;font-size:12.5px;color:#5A6B78">'+this._esc("Écart dépenses vs mois précédent : "+this.mFmt(rev.delta,this.state.currency))+'</div></section>'+realEstateHtml+'</div>';
     var modal=this._mcModal("Plan financier", body, null);
+    modal.card.style.maxWidth="760px";
     var saveSim=function(){
       var plan=self._plan(), income=document.getElementById("mc_sim_income"), debt=document.getElementById("mc_sim_debt"), rate=document.getElementById("mc_sim_rate");
       if(!income||!debt||!rate) return;
@@ -1957,7 +2114,7 @@ class Component extends DCLogic {
     var patch={currency:this._cur(snapshot.currency), financialPlan:this._mergePlan(snapshot.financialPlan)};
     keys.forEach(function(k){ patch[k]=snapshot[k]; });
     var self=this;
-    this.setState(patch, function(){ self._normalizeIds(); self._wireRows(); self._wireLogin(); self._wirePlanningUi(); });
+    this.setState(patch, function(){ self._normalizeIds(); self._wireRows(); self._wireLogin(); self._wirePlanningUi(); self._wireDebtDecisionUi(); });
     return true;
   }
   _cloudHandleError(stage, err){
