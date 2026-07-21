@@ -67,6 +67,9 @@ jobs:
       - name: Build Cloudflare Worker package
         run: python scripts/build_cloudflare_worker.py
 
+      - name: Validate generated HTML structure
+        run: python scripts/test_html_structure.py
+
       - name: Verify production security hardening
         run: python scripts/test_security_hardening.py
 
