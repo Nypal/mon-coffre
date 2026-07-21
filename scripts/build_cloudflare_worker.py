@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import pathlib
+import re
 import struct
 import sys
 import zlib
@@ -16,6 +17,7 @@ BUNDLE = ROOT / "frontend" / "Mon Coffre - Application (backend).html"
 OUT = ROOT / "cloudflare" / "dist" / "server" / "index.js"
 
 APP_NAME = "Mon Coffre"
+APP_LANG = "fr"
 THEME_COLOR = "#1e5081"
 BACKGROUND_COLOR = "#f4f7f3"
 
@@ -330,7 +332,71 @@ def _insert_before(html: str, closing_tag: str, payload: str) -> str:
     return html[:index] + payload + "\n" + html[index:]
 
 
+def _with_valid_document_structure(html: str) -> str:
+    def add_language(match: re.Match[str]) -> str:
+        attributes = match.group(1)
+        if re.search(r"\blang\s*=", attributes, flags=re.IGNORECASE):
+            return match.group(0)
+        return f'<html lang="{APP_LANG}"{attributes}>'
+
+    html, html_count = re.subn(
+        r"<html\b([^>]*)>",
+        add_language,
+        html,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    if html_count != 1:
+        raise ValueError("Missing <html> in generated bundle")
+
+    head_match = re.search(
+        r"(<head\b[^>]*>)(.*?)(</head\s*>)",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not head_match:
+        raise ValueError("Missing <head> in generated bundle")
+
+    body_noscripts: list[str] = []
+    allowed_in_head = re.compile(
+        r"<style\b[^>]*>.*?</style\s*>|<link\b[^>]*>|<meta\b[^>]*>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    def split_head_noscript(match: re.Match[str]) -> str:
+        content = match.group(1)
+        metadata = [item.group(0).strip() for item in allowed_in_head.finditer(content)]
+        visual_content = allowed_in_head.sub("", content).strip()
+        if visual_content:
+            body_noscripts.append(f"<noscript>\n{visual_content}\n</noscript>")
+        if not metadata:
+            return ""
+        return "<noscript>\n" + "\n".join(metadata) + "\n</noscript>"
+
+    valid_head = re.sub(
+        r"<noscript\b[^>]*>(.*?)</noscript\s*>",
+        split_head_noscript,
+        head_match.group(2),
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    html = html[: head_match.start()] + head_match.group(1) + valid_head + head_match.group(3) + html[head_match.end() :]
+
+    if body_noscripts:
+        html, body_count = re.subn(
+            r"(<body\b[^>]*>)",
+            lambda match: match.group(1) + "\n" + "\n".join(body_noscripts),
+            html,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        if body_count != 1:
+            raise ValueError("Missing <body> in generated bundle")
+
+    return html
+
+
 def _with_pwa_metadata(html: str) -> str:
+    html = _with_valid_document_structure(html)
     if "/manifest.webmanifest" not in html:
         html = _insert_before(html, "</head>", PWA_HEAD)
     if "/sw.js" not in html:
