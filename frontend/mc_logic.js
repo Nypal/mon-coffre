@@ -453,6 +453,32 @@ class Component extends DCLogic {
     const cur=this._rc(g), p=this.pct(g.amount_repaid_minor,g.amount_lent_minor), rem=Math.max(0,g.amount_lent_minor-g.amount_repaid_minor);
     return Object.assign({},g,{pctNum:p,pctStr:p+" %",lentStr:this.mFmt(g.amount_lent_minor,cur),repaidStr:this.mFmt(g.amount_repaid_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,this.C.brand),statusSty:this.statusStyle(g.status),initials:g.name.slice(0,1),open:rem>0,onRemind:()=>this.relance(g.name)});
   }
+  _expenseInsights(period){
+    const selected=period||(this.state.fExpMonth==="current"?this._currentPeriod():this.state.fExpMonth);
+    const rows=(this.state.expenses||[]).filter((e)=>this._same(e) && (selected==="Tous"||this._recordInPeriod(e,selected)));
+    if(!rows.length) return {ok:false,period:selected};
+    let total=0, largest=rows[0];
+    const byCategory={};
+    rows.forEach((e)=>{
+      const amount=Math.max(0,Math.trunc(Number(e.amount_minor)||0)), category=String(e.cat||"Autre");
+      total+=amount;
+      byCategory[category]=(byCategory[category]||0)+amount;
+      if(amount>Math.max(0,Math.trunc(Number(largest.amount_minor)||0))) largest=e;
+    });
+    const categories=Object.keys(byCategory).sort((a,b)=>byCategory[b]-byCategory[a]);
+    const topCategory=categories[0]||"Autre", topCategoryAmount=byCategory[topCategory]||0;
+    return {
+      ok:true,
+      period:selected,
+      periodLabel:selected==="Tous"?"Toutes les périodes":this._periodLabel(selected),
+      totalMinor:total,
+      largest:largest,
+      largestAmountMinor:Math.max(0,Math.trunc(Number(largest.amount_minor)||0)),
+      topCategory:topCategory,
+      topCategoryAmountMinor:topCategoryAmount,
+      topCategoryShare:this.pct(topCategoryAmount,total)
+    };
+  }
   dExp(e){ const cat=this.CAT[e.cat]||this.CAT["Autre"]; return Object.assign({},e,{amountStr:this.mFmt(e.amount_minor,this._rc(e)),iconStyle:this.iconBox(cat.c,cat.b,40),icon:cat.i,hasProof:!!e.proof,proofLabel:e.proof||""}); }
   dInc(i){ return Object.assign({},i,{amountStr:this.mFmt(i.amount_minor,this._rc(i))}); }
   dAcc(a){ return Object.assign({},a,{balStr:this.mFmt(a.balance_minor,this._rc(a)),iconStyle:this.iconBox(a.c,a.b,44),icon:this.ICONS[a.icon],borderStyle:a.linked?"1px solid #E7E9E4":"1.5px dashed #D3D8D1",footNote:a.linked?("Mis à jour · "+a.updated):"Compte non lié",cta:a.linked?"Mettre à jour":"Lier ce compte",onCta:()=>this.openForm("account",{account:a})}); }
@@ -862,8 +888,10 @@ class Component extends DCLogic {
       this._wireDebtDecisionUi();
     }
     this._maybeInitCloud();
+    this._wireExpenseCategoryUi();
+    this._wireExpenseInsightsUi();
   }
-  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); this._wireDebtDecisionUi(); this._wireExpenseCategoryUi(); }
+  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); this._wireDebtDecisionUi(); this._wireExpenseCategoryUi(); this._wireExpenseInsightsUi(); }
   componentWillUnmount(){
     try{
       clearTimeout(this._calendarTimer);
@@ -1832,6 +1860,33 @@ class Component extends DCLogic {
       });
     };
     refresh();
+  }
+
+  _wireExpenseInsightsUi(){
+    try{
+      const existing=document.getElementById("mc-expense-insights");
+      if(this.state.page!=="expenses"){
+        if(existing) existing.remove();
+        return;
+      }
+      const insights=this._expenseInsights();
+      if(!insights.ok){
+        if(existing) existing.remove();
+        return;
+      }
+      const labels=Array.prototype.slice.call(document.querySelectorAll("div"));
+      const totalLabel=labels.find((el)=>String(el.textContent||"").trim()==="Dépenses du mois");
+      const totalCard=totalLabel?.parentElement?.parentElement;
+      const host=totalCard?.parentElement;
+      if(!host) return;
+      if(existing) existing.remove();
+      const largest=insights.largest||{}, panel=document.createElement("section");
+      panel.id="mc-expense-insights";
+      panel.style.cssText="background:#fff;border:1px solid #E7E9E4;border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(20,40,60,.04)";
+      panel.innerHTML='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div><div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:4px">Repère dépenses</div><h3 style="margin:0;font-size:17px;font-weight:900;color:#17293C">Où part le plus d’argent ?</h3></div><span style="font-size:11.5px;font-weight:800;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:6px 9px">'+this._esc(insights.periodLabel)+'</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px"><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Plus grosse dépense</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(this.mFmt(insights.largestAmountMinor,this.state.currency))+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(largest.payee||"Dépense")+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc((largest.cat||"Autre")+(largest.date?" · "+largest.date:""))+'</div></div><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Catégorie principale</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(insights.topCategory)+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(this.mFmt(insights.topCategoryAmountMinor,this.state.currency))+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc(insights.topCategoryShare+" % de tes dépenses")+'</div></div></div>';
+      if(totalCard.nextSibling) host.insertBefore(panel,totalCard.nextSibling);
+      else host.appendChild(panel);
+    }catch(e){}
   }
 
   _wireExpenseCategoryUi(){
