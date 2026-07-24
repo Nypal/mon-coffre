@@ -369,8 +369,8 @@ class Component extends DCLogic {
     var self=this, f=this.state.form, cur=this._cur(this.state.currency);
     var amt=this.mParse(f.amount, cur);
     if(amt<=0){ this.showToast("warn","Indique un montant pour enregistrer."); return; }
-    var id=this._uid(), iso=this._isoToday();
-    var exp={id:id, cat:f.category, payee:f.payee||"Dépense", amount_minor:amt, currency:cur, method:f.method, account:f.account, date:this._shortFromIso(iso), date_iso:iso, period:this._periodFromIso(iso), month:this._monthFromIso(iso), proof:f.proof};
+    const id=this._uid(), iso=this._isoToday();
+    const exp={id:id, cat:f.category, payee:f.payee||"Dépense", amount_minor:amt, currency:cur, method:f.method, account:f.account, date:this._shortFromIso(iso), date_iso:iso, period:this._periodFromIso(iso), month:this._monthFromIso(iso), proof:f.proof};
     var files=this._pendingProofs||[];
     this.setState(function(s){
       var accs=s.accounts.map(function(a){
@@ -495,7 +495,7 @@ class Component extends DCLogic {
     const sumPeriod=(list,field,period)=>this._sum(list.filter(r=>this._recordInPeriod(r,period)),field);
     const im=rollingPeriods.map(period=>[this._periodChartLabel(period),sumPeriod(inc,"amount_minor",period),period]); const imMax=Math.max.apply(null,[1].concat(im.map(x=>x[1])));
     const incomeMonths=im.map(x=>({m:x[0],amountStr:this.mFmt(x[1],cur),barStyle:{width:"58%",height:Math.round(x[1]/imMax*112)+"px",background:x[2]===currentPeriod?C.brand:"#BED0E3",borderRadius:"7px 7px 3px 3px"}}));
-    var runningNet=0;
+    let runningNet=0;
     const tv=rollingPeriods.map(period=>{ runningNet+=sumPeriod(inc,"amount_minor",period)-sumPeriod(exp,"amount_minor",period); return [this._periodChartLabel(period),Math.max(0,runningNet)]; }); const tMax=Math.max.apply(null,[1].concat(tv.map(x=>x[1])));
     const tpts=tv.map((x,i)=>[Math.round(i/(tv.length-1)*300),Math.round(110-(x[1]/tMax)*86-10)]);
     const trendLine=tpts.map(p=>p[0]+","+p[1]).join(" ");
@@ -842,8 +842,8 @@ class Component extends DCLogic {
   }
   _scheduleCalendarRefresh(){
     clearTimeout(this._calendarTimer);
-    var self=this, now=new Date(), next=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,1);
-    this._calendarTimer=setTimeout(function(){ self.setState({calendarTick:Date.now()}); self._scheduleCalendarRefresh(); },Math.max(1000,next.getTime()-now.getTime()));
+    const now=new Date(), next=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,1);
+    this._calendarTimer=setTimeout(()=>{ this.setState({calendarTick:Date.now()}); this._scheduleCalendarRefresh(); },Math.max(1000,next.getTime()-now.getTime()));
   }
   _watchViewportMode(){
     try{
@@ -1176,8 +1176,9 @@ class Component extends DCLogic {
     return Math.trunc(Number(p.snowball&&p.snowball.monthly_budget_minor)||0);
   }
   _monthlyExpenseBy(offset){
-    var period=this._shiftPeriod(this._currentPeriod(),offset), self=this, sum=0;
-    (this.state.expenses||[]).forEach(function(e){ if(self._same(e) && self._recordInPeriod(e,period)) sum+=Math.trunc(Number(e.amount_minor)||0); });
+    const period=this._shiftPeriod(this._currentPeriod(),offset);
+    let sum=0;
+    (this.state.expenses||[]).forEach((e)=>{ if(this._same(e) && this._recordInPeriod(e,period)) sum+=Math.trunc(Number(e.amount_minor)||0); });
     return sum;
   }
   _lifestyleSignal(){
@@ -1355,12 +1356,12 @@ class Component extends DCLogic {
     return next;
   }
   _monthlyReview(){
-    var self=this, cur=this.state.currency, period=this._currentPeriod(), prev=this._shiftPeriod(period,-1), month=this._periodLabel(period);
-    function sum(list, field, p){ var t=0; (list||[]).forEach(function(r){ if(self._same(r) && (!p || self._recordInPeriod(r,p))) t+=Math.trunc(Number(r[field])||0); }); return t; }
-    var income=sum(this.state.incomes,"amount_minor",period), exp=sum(this.state.expenses,"amount_minor",period), prevExp=sum(this.state.expenses,"amount_minor",prev);
-    var bySource={}, byCat={};
-    (this.state.incomes||[]).forEach(function(i){ if(self._same(i)&&self._recordInPeriod(i,period)) bySource[i.source||"Autre"]=(bySource[i.source||"Autre"]||0)+(Number(i.amount_minor)||0); });
-    (this.state.expenses||[]).forEach(function(e){ if(self._same(e)&&self._recordInPeriod(e,period)) byCat[e.cat||"Divers"]=(byCat[e.cat||"Divers"]||0)+(Number(e.amount_minor)||0); });
+    const cur=this.state.currency, period=this._currentPeriod(), prev=this._shiftPeriod(period,-1), month=this._periodLabel(period);
+    const sum=(list,field,p)=>(list||[]).reduce((total,record)=>total+(this._same(record)&&(!p||this._recordInPeriod(record,p))?Math.trunc(Number(record[field])||0):0),0);
+    const income=sum(this.state.incomes,"amount_minor",period), exp=sum(this.state.expenses,"amount_minor",period), prevExp=sum(this.state.expenses,"amount_minor",prev);
+    const bySource={}, byCat={};
+    (this.state.incomes||[]).forEach((i)=>{ if(this._same(i)&&this._recordInPeriod(i,period)) bySource[i.source||"Autre"]=(bySource[i.source||"Autre"]||0)+(Number(i.amount_minor)||0); });
+    (this.state.expenses||[]).forEach((e)=>{ if(this._same(e)&&this._recordInPeriod(e,period)) byCat[e.cat||"Divers"]=(byCat[e.cat||"Divers"]||0)+(Number(e.amount_minor)||0); });
     return {month:month,income:income,expenses:exp,previousExpenses:prevExp,delta:exp-prevExp,bySource:bySource,byCat:byCat,currency:cur};
   }
   _mortgagePayment(principal, annualRateBps, months){
@@ -1551,9 +1552,9 @@ class Component extends DCLogic {
         var v=Fi.values(), amt=P(v.amount);
         if(amt<=0) return "Indique un montant.";
         if(!v.label) return "Indique un libellé.";
-        var id=self._uid(), iso=self._isoDateMaybe(v.date)||self._isoToday();
+        const id=self._uid(), iso=self._isoDateMaybe(v.date)||self._isoToday();
         self.setState(function(s){
-          var inc={id:id,source:v.source,label:v.label,amount_minor:amt,currency:CUR,freq:v.freq,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),month:self._monthFromIso(iso),account:v.account,note:v.note||""};
+          const inc={id:id,source:v.source,label:v.label,amount_minor:amt,currency:CUR,freq:v.freq,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),month:self._monthFromIso(iso),account:v.account,note:v.note||""};
           var accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===CUR)?Object.assign({},a,{balance_minor:a.balance_minor+amt,linked:true,updated:"Aujourd'hui"}):a; });
           return {incomes:[inc].concat(s.incomes), accounts:accs};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("income:"+id, v.proof).then(function(n){ if(n) self.showToast("ok","Justificatif joint au revenu."); }); } });
@@ -1572,7 +1573,7 @@ class Component extends DCLogic {
         var v=Fs.values(); if(!v.name) return "Indique un nom.";
         var t=P(v.target); if(t<=0) return "Indique un montant cible.";
         var sv=P(v.saved);
-        var targetIso=self._isoDateMaybe(v.date);
+        const targetIso=self._isoDateMaybe(v.date);
         self.setState(function(s){ return {savings:s.savings.concat([{id:self._uid(),name:v.name,target_amount_minor:t,current_amount_minor:sv,currency:CUR,date:targetIso?self._fullFromIso(targetIso):"—",target_iso:targetIso,status:(sv>=t?"Atteint":"En cours")}])}; }, function(){ self._persist(); });
         self._trackFeature("savings","feature_completed",{kind:"saving"});
         self.showToast("ok","Objectif d'épargne créé.");
@@ -1591,7 +1592,7 @@ class Component extends DCLogic {
           var cid=self._uid();
           var savings=s.savings.map(function(x){ if(x.id!==g.id) return x; var ns=x.current_amount_minor+amt; return Object.assign({},x,{current_amount_minor:Math.min(x.target_amount_minor,ns),status:(ns>=x.target_amount_minor?"Atteint":x.status)}); });
           var accs=s.accounts; if(v.account) accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===gcur)?Object.assign({},a,{balance_minor:a.balance_minor-amt,updated:"Aujourd'hui"}):a; });
-           var iso=self._isoToday(), contrib={id:cid,savings_goal_id:g.id,account:v.account||"",amount_minor:amt,currency:gcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
+          const iso=self._isoToday(), contrib={id:cid,savings_goal_id:g.id,account:v.account||"",amount_minor:amt,currency:gcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
           return {savings:savings, accounts:accs, savingsContributions:(s.savingsContributions||[]).concat([contrib])};
         }, function(){ self._persist(); });
         self._trackFeature("savings","feature_completed",{kind:"saveAdd",has_account:!!v.account});
@@ -1610,7 +1611,7 @@ class Component extends DCLogic {
         var v=Fp.values(); if(!v.name) return "Indique le nom de l'objet.";
         var pr=P(v.price); if(pr<=0) return "Indique un prix.";
         var sv=P(v.saved);
-        var potTargetIso=self._isoDateMaybe(v.date);
+        const potTargetIso=self._isoDateMaybe(v.date);
         self.setState(function(s){ return {pots:s.pots.concat([{id:self._uid(),name:v.name,target_amount_minor:pr,current_amount_minor:sv,currency:CUR,date:potTargetIso?self._fullFromIso(potTargetIso):"—",target_iso:potTargetIso,priority:v.priority,status:(sv>=pr?"Atteint":"En cours")}])}; }, function(){ self._persist(); });
         self._trackFeature("pots","feature_completed",{kind:"pot"});
         self.showToast("ok","Cagnotte créée. Cotise avant d'acheter.");
@@ -1630,7 +1631,7 @@ class Component extends DCLogic {
           var cid=self._uid();
           var pots=s.pots.map(function(x){ if(x.id!==gp.id) return x; var ns=x.current_amount_minor+amt; if(ns>=x.target_amount_minor) reached=true; return Object.assign({},x,{current_amount_minor:Math.min(x.target_amount_minor,ns),status:(ns>=x.target_amount_minor?"Atteint":x.status)}); });
           var accs=s.accounts; if(v.account) accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===pcur)?Object.assign({},a,{balance_minor:a.balance_minor-amt,updated:"Aujourd'hui"}):a; });
-          var iso=self._isoToday(), contrib={id:cid,purchase_goal_id:gp.id,account:v.account||"",amount_minor:amt,currency:pcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
+          const iso=self._isoToday(), contrib={id:cid,purchase_goal_id:gp.id,account:v.account||"",amount_minor:amt,currency:pcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
           return {pots:pots, accounts:accs, purchaseContributions:(s.purchaseContributions||[]).concat([contrib])};
         }, function(){ self._persist(); });
         self._trackFeature("pots","feature_completed",{kind:"potAdd",has_account:!!v.account});
@@ -1655,7 +1656,7 @@ class Component extends DCLogic {
         var min=P(v.minimum); if(min<=0) return "Indique le minimum mensuel.";
         var apr=Math.max(0,Math.round(self._numInput(v.apr)*100)||0);
         self.setState(function(s){
-          var dueIso=self._isoDateMaybe(v.due), debt={id:self._uid(),name:v.name,creditor:v.creditor,total_amount_minor:tot,paid_amount_minor:pd,currency:CUR,due:dueIso?self._fullFromIso(dueIso):"—",due_iso:dueIso,status:(pd>=tot?"Soldée":"À jour"),minimum_minor:min,apr_bps:apr,start_date_iso:self._isoToday()};
+          const dueIso=self._isoDateMaybe(v.due), debt={id:self._uid(),name:v.name,creditor:v.creditor,total_amount_minor:tot,paid_amount_minor:pd,currency:CUR,due:dueIso?self._fullFromIso(dueIso):"—",due_iso:dueIso,status:(pd>=tot?"Soldée":"À jour"),minimum_minor:min,apr_bps:apr,start_date_iso:self._isoToday()};
           return {debts:s.debts.concat([debt]),financialPlan:self._planWithDebtMeta(s.financialPlan,debt,CUR)};
         }, function(){ self._persist(); });
         self._trackFeature("debts","feature_completed",{kind:"debt"});
@@ -1675,10 +1676,17 @@ class Component extends DCLogic {
         var v=Fdp.values(), amt=self.mParse(v.amount,dcur); if(amt<=0) return "Indique un montant.";
         var pid=self._uid();
         self.setState(function(s){
-          var dueIso=self._isoDateMaybe(v.due);
-          var debts=s.debts.map(function(x){ if(x.id!==gd.id) return x; var np=Math.min(x.total_amount_minor,x.paid_amount_minor+amt); return Object.assign({},x,{paid_amount_minor:np,due:dueIso?self._fullFromIso(dueIso):x.due,due_iso:dueIso||x.due_iso||null,status:(np>=x.total_amount_minor?"Soldée":(x.status==="En retard"?"À jour":x.status))}); });
+          const dueIso=self._isoDateMaybe(v.due);
+          const debts=s.debts.map(function(x){
+            if(x.id!==gd.id) return x;
+            const np=Math.min(x.total_amount_minor,x.paid_amount_minor+amt);
+            let status=x.status;
+            if(np>=x.total_amount_minor) status="Soldée";
+            else if(status==="En retard") status="À jour";
+            return {...x,paid_amount_minor:np,due:dueIso?self._fullFromIso(dueIso):x.due,due_iso:dueIso||x.due_iso||null,status:status};
+          });
           var accs=s.accounts; if(v.account) accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===dcur)?Object.assign({},a,{balance_minor:a.balance_minor-amt,updated:"Aujourd'hui"}):a; });
-          var iso=self._isoToday(), pay={id:pid,debt_id:gd.id,account:v.account||"",amount_minor:amt,currency:dcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
+          const iso=self._isoToday(), pay={id:pid,debt_id:gd.id,account:v.account||"",amount_minor:amt,currency:dcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
           return {debts:debts, accounts:accs, debtPayments:(s.debtPayments||[]).concat([pay])};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("debt:"+gd.id+":"+pid, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve de paiement jointe."); }); } });
         self._trackFeature("debts","feature_completed",{kind:"debtPay",has_account:!!v.account,has_proof:!!(v.proof&&v.proof.length)});
@@ -1698,8 +1706,11 @@ class Component extends DCLogic {
         var v=Fl.values(); if(!v.name) return "Indique la personne.";
         var lent=P(v.lent); if(lent<=0) return "Indique le montant prêté.";
         var rp=P(v.repaid), id=self._uid();
-        var loanDueIso=self._isoDateMaybe(v.due), loanDateIso=self._isoToday();
-        self.setState(function(s){ return {loans:s.loans.concat([{id:id,name:v.name,rel:v.rel||"—",amount_lent_minor:lent,amount_repaid_minor:rp,currency:CUR,due:loanDueIso?self._fullFromIso(loanDueIso):"—",due_iso:loanDueIso,loan_date_iso:loanDateIso,status:(rp>=lent?"Remboursé":(rp>0?"En cours":"En attente")),proof:!!(v.proof&&v.proof.length)}])}; }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("loan:"+id, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve du prêt jointe."); }); } });
+        const loanDueIso=self._isoDateMaybe(v.due), loanDateIso=self._isoToday();
+        let loanStatus="En attente";
+        if(rp>=lent) loanStatus="Remboursé";
+        else if(rp>0) loanStatus="En cours";
+        self.setState(function(s){ return {loans:s.loans.concat([{id:id,name:v.name,rel:v.rel||"—",amount_lent_minor:lent,amount_repaid_minor:rp,currency:CUR,due:loanDueIso?self._fullFromIso(loanDueIso):"—",due_iso:loanDueIso,loan_date_iso:loanDateIso,status:loanStatus,proof:!!v.proof?.length}])}; }, function(){ self._persist(); if(v.proof?.length){ self._saveFiles("loan:"+id, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve du prêt jointe."); }); } });
         self._trackFeature("loans","feature_completed",{kind:"loan",has_proof:!!(v.proof&&v.proof.length)});
         self.showToast("ok","Prêt enregistré — suivi séparé de tes dettes.");
       }, "Ajouter le prêt");
@@ -1718,7 +1729,7 @@ class Component extends DCLogic {
         self.setState(function(s){
           var loans=s.loans.map(function(x){ if(x.id!==gl.id) return x; var nr=Math.min(x.amount_lent_minor,x.amount_repaid_minor+amt); return Object.assign({},x,{amount_repaid_minor:nr,status:(nr>=x.amount_lent_minor?"Remboursé":"En cours")}); });
           var accs=s.accounts; if(v.account) accs=s.accounts.map(function(a){ return (a.name===v.account && self._rc(a)===lcur)?Object.assign({},a,{balance_minor:a.balance_minor+amt,linked:true,updated:"Aujourd'hui"}):a; });
-          var iso=self._isoToday(), rep={id:rid,loan_id:gl.id,account:v.account||"",amount_minor:amt,currency:lcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
+          const iso=self._isoToday(), rep={id:rid,loan_id:gl.id,account:v.account||"",amount_minor:amt,currency:lcur,date:self._fullFromIso(iso),date_iso:iso,period:self._periodFromIso(iso),note:""};
           return {loans:loans, accounts:accs, loanRepayments:(s.loanRepayments||[]).concat([rep])};
         }, function(){ self._persist(); if(v.proof&&v.proof.length){ self._saveFiles("loanrepay:"+gl.id+":"+rid, v.proof).then(function(n){ if(n) self.showToast("ok","Preuve jointe."); }); } });
         self._trackFeature("loans","feature_completed",{kind:"loanFollow",has_account:!!v.account,has_proof:!!(v.proof&&v.proof.length)});
@@ -1785,8 +1796,8 @@ class Component extends DCLogic {
   _wireRows(){
     try{
       var S=this.state, self=this;
-      var selected=S.fExpMonth==="current"?this._currentPeriod():S.fExpMonth;
-      var list=S.page==="income" ? (S.incomes||[]) : S.expenses.filter(function(e){ return (selected==="Tous"||self._recordInPeriod(e,selected))&&(S.fExpCat==="Toutes"||e.cat===S.fExpCat); });
+      const selected=S.fExpMonth==="current"?this._currentPeriod():S.fExpMonth;
+      const list=S.page==="income" ? (S.incomes||[]) : S.expenses.filter(function(e){ return (selected==="Tous"||self._recordInPeriod(e,selected))&&(S.fExpCat==="Toutes"||e.cat===S.fExpCat); });
       var rows=document.querySelectorAll('div[style*="padding: 14px 15px"]');
       Array.prototype.forEach.call(rows, function(el,i){
         el.__mcExp=S.page==="income"?null:list[i];
@@ -1981,12 +1992,12 @@ class Component extends DCLogic {
   _completeOnboarding(){
     var p=this._plan(), cur=p.profile.main_currency||this.state.currency, patch={currency:cur}, self=this;
     function mkId(){ return self._uid(); }
-    var currentIso=this._isoToday(), currentPeriod=this._periodFromIso(currentIso), currentMonth=this._monthFromIso(currentIso);
+    const currentIso=this._isoToday(), currentPeriod=this._periodFromIso(currentIso), currentMonth=this._monthFromIso(currentIso);
     var accounts=this._obRows("accounts",p).map(function(a){ return {id:mkId(),name:a.name||"Compte",type:a.role||"Autre",balance_minor:self._moneyInput(a.balance,cur),currency:cur,updated:"Aujourd'hui",linked:true,icon:self._iconForType(a.role||"Autre"),c:"#1E5081",b:"#EAF1F8",role:a.role||"Autre"}; });
     var firstAcc=accounts[0]?accounts[0].name:"";
-    var incomes=this._obRows("income",p).map(function(a){ return {id:mkId(),source:a.source||"Revenu",label:a.source||"Revenu",amount_minor:self._moneyInput(a.amount,cur),currency:cur,freq:a.frequency||"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Jour: "+(a.payday||"Variable")+"; type: "+(a.income_type||"Fixe")}; });
-    if(!incomes.length && (p.lifestyle&&p.lifestyle.new_income_minor)>0) incomes.push({id:mkId(),source:"Revenu principal",label:"Revenu principal",amount_minor:Math.trunc(Number(p.lifestyle.new_income_minor)||0),currency:cur,freq:"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Revenu mensuel actuel saisi pendant la configuration. Rythme de paie : "+((p.profile&&p.profile.pay_frequency)||"Mensuel")});
-    var expenses=this._obRows("fixedExpenses",p).map(function(a){ return {id:mkId(),cat:a.category||"Autre",payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,proof:null,note:"Dépense fixe onboarding; jour prévu: "+(a.day||"Variable")}; });
+    const incomes=this._obRows("income",p).map(function(a){ return {id:mkId(),source:a.source||"Revenu",label:a.source||"Revenu",amount_minor:self._moneyInput(a.amount,cur),currency:cur,freq:a.frequency||"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Jour: "+(a.payday||"Variable")+"; type: "+(a.income_type||"Fixe")}; });
+    if(!incomes.length && (p.lifestyle?.new_income_minor||0)>0) incomes.push({id:mkId(),source:"Revenu principal",label:"Revenu principal",amount_minor:Math.trunc(Number(p.lifestyle.new_income_minor)||0),currency:cur,freq:"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Revenu mensuel actuel saisi pendant la configuration. Rythme de paie : "+(p.profile?.pay_frequency||"Mensuel")});
+    const expenses=this._obRows("fixedExpenses",p).map(function(a){ return {id:mkId(),cat:a.category||"Autre",payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,proof:null,note:"Dépense fixe onboarding; jour prévu: "+(a.day||"Variable")}; });
     var debts=this._obRows("debts",p).map(function(a){ var total=self._moneyInput(a.balance,cur); return {id:mkId(),name:a.name||"Dette",creditor:a.name||"Créancier",total_amount_minor:total,paid_amount_minor:0,currency:cur,due:a.due||"—",status:"À jour",minimum_minor:self._moneyInput(a.minimum,cur),apr_bps:Math.round(self._numInput(a.apr)*100)||0}; });
     var savings=[];
     if((p.emergency_target_minor||0)>0) savings.push({id:mkId(),name:"Coussin de sécurité",target_amount_minor:p.emergency_target_minor,current_amount_minor:0,currency:cur,date:"—",status:"En cours",priority:"Haute"});
@@ -2327,61 +2338,65 @@ class Component extends DCLogic {
     return true;
   }
   _cloudHandleError(stage, err){
-    try{
-      this._cloudLastError={stage:String(stage||"cloud"), message:(err && err.message) ? String(err.message) : "Erreur cloud"};
-      if(this._cloudEnabled() && typeof console!=="undefined" && console.warn){
-        console.warn("Cloud Mon Coffre:", this._cloudLastError.stage, this._cloudLastError.message);
-      }
-    }catch(e){}
+    this._cloudLastError={stage:String(stage||"cloud"), message:err?.message?String(err.message):"Erreur cloud"};
+    if(this._cloudEnabled() && typeof console!=="undefined" && console.warn){
+      console.warn("Cloud Mon Coffre:", this._cloudLastError.stage, this._cloudLastError.message);
+    }
   }
   _localIsoDate(value){
-    var d=value instanceof Date?value:new Date();
-    if(!isFinite(d.getTime())) return "";
+    const d=value instanceof Date?value:new Date();
+    if(!Number.isFinite(d.getTime())) return "";
     return String(d.getFullYear()).padStart(4,"0")+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
   }
   _isoToday(value){ return this._localIsoDate(value); }
   _periodFromIso(iso){
-    var m=String(iso||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));
     if(!m) return null;
-    var y=Number(m[1]), mo=Number(m[2]), day=Number(m[3]), d=new Date(y,mo-1,day);
+    const y=Number(m[1]), mo=Number(m[2]), day=Number(m[3]), d=new Date(y,mo-1,day);
     if(d.getFullYear()!==y || d.getMonth()!==mo-1 || d.getDate()!==day) return null;
     return m[1]+"-"+m[2];
   }
   _currentPeriod(value){ return this._periodFromIso(this._isoToday(value)); }
   _shiftPeriod(period, offset){
-    var m=String(period||"").match(/^(\d{4})-(\d{2})$/);
+    const m=/^(\d{4})-(\d{2})$/.exec(String(period||""));
     if(!m) return null;
-    var d=new Date(Number(m[1]),Number(m[2])-1+(Number(offset)||0),1);
+    const d=new Date(Number(m[1]),Number(m[2])-1+(Number(offset)||0),1);
     return String(d.getFullYear()).padStart(4,"0")+"-"+String(d.getMonth()+1).padStart(2,"0");
   }
   _periodLabel(period){
-    var m=String(period||"").match(/^(\d{4})-(\d{2})$/); if(!m) return "";
-    var text=new Intl.DateTimeFormat("fr-FR",{month:"long",year:"numeric"}).format(new Date(Number(m[1]),Number(m[2])-1,1));
+    const m=/^(\d{4})-(\d{2})$/.exec(String(period||""));
+    if(!m) return "";
+    const text=new Intl.DateTimeFormat("fr-FR",{month:"long",year:"numeric"}).format(new Date(Number(m[1]),Number(m[2])-1,1));
     return text.charAt(0).toUpperCase()+text.slice(1);
   }
   _periodChartLabel(period){
-    var m=String(period||"").match(/^(\d{4})-(\d{2})$/); if(!m) return "";
-    var month=new Intl.DateTimeFormat("fr-FR",{month:"short"}).format(new Date(Number(m[1]),Number(m[2])-1,1)).replace(".","");
+    const m=/^(\d{4})-(\d{2})$/.exec(String(period||""));
+    if(!m) return "";
+    const month=new Intl.DateTimeFormat("fr-FR",{month:"short"}).format(new Date(Number(m[1]),Number(m[2])-1,1)).replace(".","");
     return month.charAt(0).toUpperCase()+month.slice(1)+" "+m[1].slice(2);
   }
   _rollingPeriods(count, value){
-    var current=this._currentPeriod(value), rows=[];
-    for(var i=Math.max(1,Number(count)||1)-1;i>=0;i--) rows.push(this._shiftPeriod(current,-i));
+    const current=this._currentPeriod(value), rows=[];
+    for(let i=Math.max(1,Number(count)||1)-1;i>=0;i--) rows.push(this._shiftPeriod(current,-i));
     return rows;
   }
   _recordPeriod(record){
-    var r=record||{}, direct=String(r.period||"");
+    const r=record||{}, direct=String(r.period||"");
     if(/^\d{4}-\d{2}$/.test(direct)) return direct;
-    var iso=this._isoDateMaybe(r.date_iso)||this._isoDateMaybe(r.date);
+    const iso=this._isoDateMaybe(r.date_iso)||this._isoDateMaybe(r.date);
     if(iso) return this._periodFromIso(iso);
-    var idx=this._moisLong.map(function(x){return x.toLowerCase();}).indexOf(String(r.month||"").toLowerCase());
+    const idx=this._moisLong.map((x)=>x.toLowerCase()).indexOf(String(r.month||"").toLowerCase());
     return idx>=0?String(new Date().getFullYear())+"-"+String(idx+1).padStart(2,"0"):null;
   }
   _recordInPeriod(record, period){ return !!period && this._recordPeriod(record)===period; }
   _periodOptions(records){
-    var self=this, seen={}, periods=[this._currentPeriod()];
-    (records||[]).forEach(function(r){ var p=self._recordPeriod(r); if(p) periods.push(p); });
-    return periods.filter(function(p){ if(!p||seen[p]) return false; seen[p]=1; return true; }).sort().reverse().slice(0,12).map(function(p){ return {value:p,label:self._periodLabel(p)}; });
+    const seen={}, periods=[this._currentPeriod()];
+    (records||[]).forEach((record)=>{ const period=this._recordPeriod(record); if(period) periods.push(period); });
+    return periods.filter((period)=>{
+      if(!period||seen[period]) return false;
+      seen[period]=1;
+      return true;
+    }).sort((a,b)=>b.localeCompare(a)).slice(0,12).map((period)=>({value:period,label:this._periodLabel(period)}));
   }
   _isoDateMaybe(v){
     if(!v || v==="—") return null;
@@ -2394,7 +2409,7 @@ class Component extends DCLogic {
     if(map[name]==null) return null;
     var y=Number(m[3]||new Date().getFullYear()), d=Number(m[1]), mo=map[name]+1;
     if(!d || d<1 || d>31) return null;
-    var iso=String(y).padStart(4,"0")+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    const iso=String(y).padStart(4,"0")+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
     return this._periodFromIso(iso)?iso:null;
   }
   _shortFromIso(iso){
@@ -2583,7 +2598,7 @@ class Component extends DCLogic {
         savingsContributions:all[4].map(function(c){ return {id:c.id,savings_goal_id:c.savings_goal_id,account:accName(c.account_id),amount_minor:c.amount_minor||0,currency:self._cur(c.currency),date:self._fullFromIso(c.contribution_date),date_iso:c.contribution_date||null,period:self._periodFromIso(c.contribution_date),note:c.note||""}; }),
         pots:all[5].map(function(g){ var m=purchaseMeta[String(g.item_name||"").toLowerCase()]||{}; return {id:g.id,name:g.item_name,target_amount_minor:g.target_amount_minor||0,current_amount_minor:g.current_amount_minor||0,currency:self._cur(g.currency),date:self._fullFromIso(g.target_date),target_iso:m.target_iso||g.target_date||null,priority:g.priority||"Moyenne",status:g.status||"En cours",note:g.note||"",goal_type:m.goal_type||"",planned:!!m.planned,weekly_minor:m.weekly_minor||0,image_url:self._safeImageUrl(g.image_url||m.image_url)}; }),
         purchaseContributions:all[6].map(function(c){ return {id:c.id,purchase_goal_id:c.purchase_goal_id,account:accName(c.account_id),amount_minor:c.amount_minor||0,currency:self._cur(c.currency),date:self._fullFromIso(c.contribution_date),date_iso:c.contribution_date||null,period:self._periodFromIso(c.contribution_date),note:c.note||""}; }),
-        debts:all[7].map(function(d){ var m=debtMeta[String(d.debt_name||"").toLowerCase()]||{}; return {id:d.id,name:d.debt_name||"Dette",creditor:d.creditor_name||"",total_amount_minor:d.total_amount_minor||0,paid_amount_minor:d.paid_amount_minor||0,currency:self._cur(d.currency),start_date_iso:d.start_date||null,due:self._fullFromIso(d.next_payment_date),due_iso:d.next_payment_date||null,status:d.status||"A jour",note:d.note||"",minimum_minor:m.minimum_minor||0,apr_bps:m.apr_bps||0}; }),
+        debts:all[7].map(function(d){ const m=debtMeta[String(d.debt_name||"").toLowerCase()]||{}; return {id:d.id,name:d.debt_name||"Dette",creditor:d.creditor_name||"",total_amount_minor:d.total_amount_minor||0,paid_amount_minor:d.paid_amount_minor||0,currency:self._cur(d.currency),start_date_iso:d.start_date||null,due:self._fullFromIso(d.next_payment_date),due_iso:d.next_payment_date||null,status:d.status||"A jour",note:d.note||"",minimum_minor:m.minimum_minor||0,apr_bps:m.apr_bps||0}; }),
         debtPayments:all[8].map(function(p){ return {id:p.id,debt_id:p.debt_id,account:accName(p.account_id),amount_minor:p.amount_minor||0,currency:self._cur(p.currency),date:self._fullFromIso(p.payment_date),date_iso:p.payment_date||null,period:self._periodFromIso(p.payment_date),note:p.note||""}; }),
         loans:all[9].map(function(l){ return {id:l.id,name:l.borrower_name||"",rel:"—",amount_lent_minor:l.amount_lent_minor||0,amount_repaid_minor:l.amount_repaid_minor||0,currency:self._cur(l.currency),loan_date_iso:l.loan_date||null,due:self._fullFromIso(l.expected_repayment_date),due_iso:l.expected_repayment_date||null,status:l.status||"En attente",proof:false,note:l.note||""}; }),
         loanRepayments:all[10].map(function(r){ return {id:r.id,loan_id:r.loan_id,account:accName(r.account_id),amount_minor:r.amount_minor||0,currency:self._cur(r.currency),date:self._fullFromIso(r.repayment_date),date_iso:r.repayment_date||null,period:self._periodFromIso(r.repayment_date),note:r.note||""}; }),
