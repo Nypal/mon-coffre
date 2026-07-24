@@ -68,6 +68,85 @@ assert(
 const money = app._moneyTests();
 assert(money.passed === 33 && money.failed === 0, "money tests must pass 33/33");
 
+const calendar = new Component();
+calendar.props = { mode: "desktop" };
+assert(
+  calendar._localIsoDate(new Date(2027, 0, 5, 23, 30)) === "2027-01-05",
+  "calendar dates must use the user's local day instead of UTC"
+);
+assert(calendar._periodFromIso("2026-02-29") === null, "invalid calendar dates must be rejected");
+assert(calendar._periodFromIso("2028-02-29") === "2028-02", "valid leap days must be accepted");
+assert(calendar._shiftPeriod("2026-12", 1) === "2027-01", "period navigation must cross calendar years");
+assert(
+  JSON.stringify(calendar._rollingPeriods(3, new Date(2027, 0, 15))) ===
+    JSON.stringify(["2026-11", "2026-12", "2027-01"]),
+  "rolling calendar periods must cross New Year correctly"
+);
+assert(
+  calendar._recordInPeriod({ date_iso: "2025-07-02" }, "2026-07") === false,
+  "records from the same month in another year must stay separate"
+);
+assert(
+  calendar._recordInPeriod({ date_iso: "2026-07-02" }, "2026-07") === true,
+  "records must match their exact calendar period"
+);
+assert(
+  calendar._scheduleCalendarRefresh.toString().includes("setTimeout"),
+  "the visible calendar must refresh after local midnight"
+);
+
+calendar._cloudUser = { id: "00000000-0000-4000-8000-000000000009" };
+const datedSnapshot = {
+  v: 2,
+  currency: "USD",
+  accounts: [],
+  incomes: [{ id: "income-date", amount_minor: 100, currency: "USD", date_iso: "2025-07-02" }],
+  expenses: [{ id: "expense-date", amount_minor: 50, currency: "USD", date_iso: "2024-12-31" }],
+  savings: [],
+  pots: [],
+  debts: [{ id: "debt-date", total_amount_minor: 1000, currency: "USD", start_date_iso: "2023-03-04", due_iso: "2027-01-15" }],
+  loans: [{ id: "loan-date", amount_lent_minor: 1000, currency: "USD", loan_date_iso: "2022-09-08", due_iso: "2026-08-10" }],
+  savingsContributions: [],
+  purchaseContributions: [],
+  debtPayments: [],
+  loanRepayments: [],
+};
+const datedRows = calendar._cloudRows(datedSnapshot);
+assert(datedRows.income[0].income_date === "2025-07-02", "cloud income dates must not be rewritten");
+assert(datedRows.expenses[0].expense_date === "2024-12-31", "cloud expense dates must not be rewritten");
+assert(datedRows.debts[0].start_date === "2023-03-04", "cloud debt start dates must be preserved");
+assert(datedRows.debts[0].next_payment_date === "2027-01-15", "cloud debt due dates must be preserved");
+assert(datedRows.loans_given[0].loan_date === "2022-09-08", "cloud loan dates must be preserved");
+assert(
+  datedRows.loans_given[0].expected_repayment_date === "2026-08-10",
+  "cloud loan repayment dates must be preserved"
+);
+assert(
+  calendar._cloudLoad.toString().includes("date_iso:i.income_date") &&
+    calendar._cloudLoad.toString().includes("date_iso:e.expense_date"),
+  "cloud loading must retain ISO transaction dates"
+);
+const livePeriod = calendar._currentPeriod();
+const sameMonthLastYear = calendar._shiftPeriod(livePeriod, -12);
+calendar.state.currency = "USD";
+calendar.state.incomes = [
+  { amount_minor: 100, currency: "USD", period: livePeriod },
+  { amount_minor: 900, currency: "USD", period: sameMonthLastYear },
+];
+calendar.state.expenses = [
+  { amount_minor: 40, currency: "USD", period: livePeriod, cat: "Divers" },
+  { amount_minor: 500, currency: "USD", period: sameMonthLastYear, cat: "Divers" },
+];
+const calendarVals = calendar.renderVals();
+assert(
+  calendarVals.resumeInc === calendar.mFmt(100, "USD"),
+  "dashboard income must include only the current calendar month and year"
+);
+assert(
+  calendarVals.resumeExp === calendar.mFmt(40, "USD"),
+  "dashboard expenses must include only the current calendar month and year"
+);
+
 app.MC_CLOUD = { enabled: true };
 app._cloudUser = { id: "user-a" };
 app.state.financialPlan = null;
@@ -494,6 +573,7 @@ console.log(
         "structured onboarding rows",
         "lightweight onboarding start",
         "neutral onboarding label",
+        "calendar-synchronized ISO dates",
         "dashboard empty-state guidance",
         "privacy-preserving product evaluation",
       ],
