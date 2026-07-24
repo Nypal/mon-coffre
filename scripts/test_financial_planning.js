@@ -68,6 +68,48 @@ assert(
 const money = app._moneyTests();
 assert(money.passed === 33 && money.failed === 0, "money tests must pass 33/33");
 
+const quickAdd = new Component();
+quickAdd.props = { mode: "desktop" };
+let chooserOpened = false;
+let openedForm = "";
+quickAdd._openTransactionChooser = () => {
+  chooserOpened = true;
+};
+quickAdd.openForm = (kind) => {
+  openedForm = kind;
+};
+quickAdd.state.page = "dashboard";
+quickAdd.openAdd();
+assert(chooserOpened === true, "dashboard quick add must offer both income and expense");
+quickAdd.state.page = "income";
+quickAdd.openAdd();
+assert(openedForm === "income", "income quick add must open the income form directly");
+quickAdd.state.page = "expenses";
+quickAdd.state.addOpen = false;
+quickAdd.openAdd();
+assert(quickAdd.state.addOpen === true, "expenses quick add must open the expense form directly");
+quickAdd.state.currency = "USD";
+quickAdd.state.accounts = [
+  { name: "Checking", currency: "USD" },
+  { name: "Savings", currency: "USD" },
+  { name: "Euro account", currency: "EUR" },
+];
+const incomeAccounts = quickAdd._accOpts().map((option) => option.value);
+assert(
+  incomeAccounts.includes("Checking") && incomeAccounts.includes("Savings"),
+  "income form must offer every account in the active currency"
+);
+assert(!incomeAccounts.includes("Euro account"), "income form must not mix account currencies");
+assert(
+  Component.prototype.openForm.toString().includes("Compte qui reçoit l'argent"),
+  "income account selector must use plain language"
+);
+assert(
+  Component.prototype._openTransactionChooser.toString().includes("Ajouter un revenu") &&
+    Component.prototype._openTransactionChooser.toString().includes("Ajouter une dépense"),
+  "transaction chooser must expose both income and expense actions"
+);
+
 const calendar = new Component();
 calendar.props = { mode: "desktop" };
 assert(
@@ -574,6 +616,7 @@ console.log(
         "lightweight onboarding start",
         "neutral onboarding label",
         "calendar-synchronized ISO dates",
+        "balanced income and expense quick add",
         "dashboard empty-state guidance",
         "privacy-preserving product evaluation",
       ],
