@@ -337,11 +337,33 @@ class Component extends DCLogic {
   filterChip(active){ const C=this.C; return {padding:"8px 13px",borderRadius:"10px",fontSize:"12.5px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",border:"1px solid "+(active?"transparent":"#E1E4DE"),background:active?C.ink:"#fff",color:active?"#fff":C.ink2}; }
 
   openAdd(){
-    var p=this.state.page;
-    var map={available:"account", income:"income", savings:"saving", pots:"pot", debts:"debt", loans:"loan"};
+    const p=this.state.page;
+    const map={available:"account", income:"income", savings:"saving", pots:"pot", debts:"debt", loans:"loan"};
     this._trackFeature("quick_add","feature_started",{source:p});
     this.setState({menuOpen:false});
-    if(map[p]) this.openForm(map[p]); else this.setState({addOpen:true, menuOpen:false});
+    if(map[p]) this.openForm(map[p]);
+    else if(p==="expenses") this.setState({addOpen:true, menuOpen:false});
+    else this._openTransactionChooser();
+  }
+  _openTransactionChooser(){
+    const body=document.createElement("div");
+    body.style.cssText="display:flex;flex-direction:column;gap:10px;margin-bottom:4px";
+    let modal=null;
+    const addChoice=(label,hint,kind,color,background)=>{
+      const button=document.createElement("button");
+      button.type="button";
+      button.style.cssText="width:100%;display:flex;align-items:center;gap:13px;padding:14px;border:1px solid #E1E4DE;border-radius:14px;background:#fff;text-align:left;cursor:pointer";
+      button.innerHTML='<span style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;flex:none;border-radius:11px;color:'+color+';background:'+background+'"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="'+this._esc(this.ICONS[kind])+'"></path></svg></span><span style="min-width:0"><strong style="display:block;color:#17293C;font-size:14px">'+this._esc(label)+'</strong><span style="display:block;margin-top:3px;color:#8B98A2;font-size:12px;line-height:1.4">'+this._esc(hint)+'</span></span>';
+      button.onclick=()=>{
+        modal?.close();
+        if(kind==="income") this.openForm("income");
+        else this.setState({addOpen:true,menuOpen:false});
+      };
+      body.appendChild(button);
+    };
+    addChoice("Ajouter un revenu","Ajoute l'argent au compte qui l'a reçu.","income","#34824B","#E7F3EB");
+    addChoice("Ajouter une dépense","Retire le montant du compte utilisé.","expense","#B98A2E","#F6EED7");
+    modal=this._mcModal("Ajouter une opération",body,null);
   }
   cotiser(name){ this.openForm("potAdd",{name:name}); }
   epargner(name){ this.openForm("saveAdd",{name:name}); }
@@ -1543,7 +1565,7 @@ class Component extends DCLogic {
         {key:"date",label:"Date de réception",type:"date",required:true,value:this._isoToday()},
         {key:"label",label:"Libellé",type:"text",required:true,placeholder:"Ex : Salaire — Employeur"},
         {key:"source",label:"Source",type:"chips",options:["Salaire","Freelance","Business","Cadeau","Remboursement","Autre"],value:"Salaire"},
-        {key:"account",label:"Compte à créditer",type:"select",options:this._accOpts()},
+        {key:"account",label:"Compte qui reçoit l'argent",type:"select",options:this._accOpts()},
         {key:"freq",label:"Fréquence",type:"chips",options:["Mensuel","Ponctuel","Hebdomadaire","Autre"],value:"Mensuel"},
         {key:"note",label:"Note",type:"text",opt:true},
         {key:"proof",label:"Justificatif",type:"file",opt:true}
