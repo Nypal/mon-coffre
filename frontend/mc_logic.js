@@ -112,10 +112,15 @@ class Component extends DCLogic {
     "Alimentation":{c:"#3F9A5A",b:"#E7F3EB",i:"M6.5 8.5h11l-1 10.2a1 1 0 0 1-1 .9H9.5a1 1 0 0 1-1-.9L6.5 8.5Zm3 0V7a2.5 2.5 0 0 1 5 0v1.5"},
     "Factures":{c:"#B98A2E",b:"#F6EED7",i:"M13 3.5 6 13h5l-1 7.5L18 11h-5l1-7.5Z"},
     "Transport":{c:"#2A6FB0",b:"#E7F0F9",i:"M6 13l1.4-3.8A2 2 0 0 1 9.3 8h5.4a2 2 0 0 1 1.9 1.2L18 13m-12 0h12v3.5h-2M9.8 16.5H6V13Zm.7 0a1.4 1.4 0 1 1-2.8 0 1.4 1.4 0 0 1 2.8 0Zm8 0a1.4 1.4 0 1 1-2.8 0 1.4 1.4 0 0 1 2.8 0Z"},
+    "Carburant":{c:"#2A6FB0",b:"#E7F0F9",i:"M7 19h10M8 19V6.5h7V19M9.5 9h4M15 10h2l2 2v5.5a1.5 1.5 0 0 1-3 0V14"},
     "Restaurants":{c:"#B0693A",b:"#F6ECE1",i:"M7 3.5v6.5a2 2 0 0 0 4 0V3.5M9 10v10.5M16.5 3.5c-1.4 0-2.3 2-2.3 4.6s.9 3.9 2.3 3.9v8.5"},
     "Abonnements":{c:"#6E57B8",b:"#EEEAF8",i:"M5 9.5a6 6 0 0 1 10-2.2l1.8 1.8m0-4v4h-4M19 14.5a6 6 0 0 1-10 2.2L7 15m0 4v-4h4"},
     "Santé":{c:"#C15F4C",b:"#F6E7E2",i:"M12 20s-6.5-4-6.5-8.6A3.6 3.6 0 0 1 12 8.4a3.6 3.6 0 0 1 6.5 3C18.5 16 12 20 12 20Z"},
-    "Divers":{c:"#5A6B78",b:"#EEF1F0",i:"M6.5 12h.01M12 12h.01M17.5 12h.01"}
+    "Dons":{c:"#C15F4C",b:"#F6E7E2",i:"M12 20s-6.5-4-6.5-8.6A3.6 3.6 0 0 1 12 8.4a3.6 3.6 0 0 1 6.5 3C18.5 16 12 20 12 20Z"},
+    "Prestations de service":{c:"#5A6B78",b:"#EEF1F0",i:"M8 7V5h8v2M5 8h14v11H5V8Zm0 4h14M10 12v2h4v-2"},
+    "Loisirs / plaisir":{c:"#6E57B8",b:"#EEEAF8",i:"m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"},
+    "Sorties":{c:"#B0693A",b:"#F6ECE1",i:"M5 6.5h14v11H5v-11Zm3 0v11m8-11v11M5 10h3m8 4h3"},
+    "Autre":{c:"#5A6B78",b:"#EEF1F0",i:"M6.5 12h.01M12 12h.01M17.5 12h.01"}
   };
 
   /* ---------- State: demo data stored in USD minor units ---------- */
@@ -123,7 +128,7 @@ class Component extends DCLogic {
     page: (this.MC_CLOUD && this.MC_CLOUD.enabled===true) ? "login" : ((this.props && this.props.startPage) || "dashboard"),
     currency: "USD",
     menuOpen: false, addOpen: false, toast: null,
-    form: { amount:"", date:"", category:"Alimentation", method:"Carte", account:"Compte bancaire", payee:"", note:"", proof:null },
+    form: { amount:"", date:"", category:"Alimentation", otherCategory:"", method:"Carte", account:"Compte bancaire", payee:"", note:"", proof:null },
     fExpMonth:"current", fExpCat:"Toutes", fIncMonth:"current", fIncSource:"Toutes",
     accounts: [
       {id:"cash",    name:"Espèces",         type:"Argent liquide",       balance_minor:12000, currency:"USD", updated:"Aujourd'hui", linked:true,  icon:"cash",  c:"#3F9A5A", b:"#E7F3EB"},
@@ -391,8 +396,13 @@ class Component extends DCLogic {
     var self=this, f=this.state.form, cur=this._cur(this.state.currency);
     var amt=this.mParse(f.amount, cur);
     if(amt<=0){ this.showToast("warn","Indique un montant pour enregistrer."); return; }
+    var category=String(f.category||"Autre").trim();
+    if(category==="Autre"){
+      category=String(this._expenseOtherDraft||f.otherCategory||"").trim().slice(0,60);
+      if(!category){ this.showToast("warn","Précise le type de cette dépense."); return; }
+    }
     const id=this._uid(), iso=this._isoToday();
-    const exp={id:id, cat:f.category, payee:f.payee||"Dépense", amount_minor:amt, currency:cur, method:f.method, account:f.account, date:this._shortFromIso(iso), date_iso:iso, period:this._periodFromIso(iso), month:this._monthFromIso(iso), proof:f.proof};
+    const exp={id:id, cat:category, payee:f.payee||"Dépense", amount_minor:amt, currency:cur, method:f.method, account:f.account, date:this._shortFromIso(iso), date_iso:iso, period:this._periodFromIso(iso), month:this._monthFromIso(iso), proof:f.proof};
     var files=this._pendingProofs||[];
     this.setState(function(s){
       var accs=s.accounts.map(function(a){
@@ -400,12 +410,13 @@ class Component extends DCLogic {
         if(self._rc(a)!==cur) return a;                       // different currency: leave balance unchanged
         return Object.assign({},a,{balance_minor:a.balance_minor-amt, updated:"Aujourd'hui"});
       });
-      return { expenses:[exp].concat(s.expenses), accounts:accs, addOpen:false, form:Object.assign({},s.form,{amount:"",payee:"",proof:null}) };
+      return { expenses:[exp].concat(s.expenses), accounts:accs, addOpen:false, form:Object.assign({},s.form,{amount:"",otherCategory:"",payee:"",proof:null}) };
     }, function(){
       self._persist();
       if(files.length){ self._saveFiles("expense:"+id, files).then(function(n){ if(n) self.showToast("ok","Preuve jointe à la dépense."); }); }
     });
     this._pendingProofs=[];
+    this._expenseOtherDraft="";
     this._trackFeature("expenses","feature_completed",{source:"quick_add",has_account:!!f.account,has_proof:!!files.length});
     this.showToast("ok","Cette dépense a été enregistrée.");
   }
@@ -442,7 +453,7 @@ class Component extends DCLogic {
     const cur=this._rc(g), p=this.pct(g.amount_repaid_minor,g.amount_lent_minor), rem=Math.max(0,g.amount_lent_minor-g.amount_repaid_minor);
     return Object.assign({},g,{pctNum:p,pctStr:p+" %",lentStr:this.mFmt(g.amount_lent_minor,cur),repaidStr:this.mFmt(g.amount_repaid_minor,cur),remainStr:this.mFmt(rem,cur),barStyle:this.bar(p,this.C.brand),statusSty:this.statusStyle(g.status),initials:g.name.slice(0,1),open:rem>0,onRemind:()=>this.relance(g.name)});
   }
-  dExp(e){ const cat=this.CAT[e.cat]||this.CAT["Divers"]; return Object.assign({},e,{amountStr:this.mFmt(e.amount_minor,this._rc(e)),iconStyle:this.iconBox(cat.c,cat.b,40),icon:cat.i,hasProof:!!e.proof,proofLabel:e.proof||""}); }
+  dExp(e){ const cat=this.CAT[e.cat]||this.CAT["Autre"]; return Object.assign({},e,{amountStr:this.mFmt(e.amount_minor,this._rc(e)),iconStyle:this.iconBox(cat.c,cat.b,40),icon:cat.i,hasProof:!!e.proof,proofLabel:e.proof||""}); }
   dInc(i){ return Object.assign({},i,{amountStr:this.mFmt(i.amount_minor,this._rc(i))}); }
   dAcc(a){ return Object.assign({},a,{balStr:this.mFmt(a.balance_minor,this._rc(a)),iconStyle:this.iconBox(a.c,a.b,44),icon:this.ICONS[a.icon],borderStyle:a.linked?"1px solid #E7E9E4":"1.5px dashed #D3D8D1",footNote:a.linked?("Mis à jour · "+a.updated):"Compte non lié",cta:a.linked?"Mettre à jour":"Lier ce compte",onCta:()=>this.openForm("account",{account:a})}); }
 
@@ -498,7 +509,10 @@ class Component extends DCLogic {
     if(pot[0]) dashGoals.push((()=>{ const g=this.dPot(pot[0]); return {name:g.name,kicker:"CAGNOTTE",icon:this.ICONS.pots,iconStyle:this.iconBox(C.brand,C.brandBg,40),pctColor:C.brand,pctStr:g.pctStr,barStyle:g.barStyle,savedStr:g.savedStr,totalStr:g.priceStr,remainStr:g.remainStr}; })());
 
     const chip=(active,activeStyle)=> Object.assign({display:"inline-flex",alignItems:"center",gap:"6px",padding:"9px 13px",borderRadius:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer",border:"1px solid "+(active?"transparent":"#E1E4DE"),background:active?activeStyle.bg:"#fff",color:active?activeStyle.c:C.ink2},{});
-    const catChips=Object.keys(this.CAT).map(k=>{ const active=S.form.category===k; const cat=this.CAT[k]; return {label:k,onClick:()=>this.setForm("category",k),style:chip(active,{bg:cat.b,c:cat.c})}; });
+    const standardExpenseCats=Object.keys(this.CAT);
+    const customExpenseCats=exp.map(e=>String(e.cat||"").trim()).filter(k=>k && k!=="Divers" && !this.CAT[k]);
+    const expenseCatOptions=standardExpenseCats.concat(customExpenseCats.filter((k,i,a)=>a.indexOf(k)===i));
+    const catChips=expenseCatOptions.map(k=>{ const active=S.form.category===k; const cat=this.CAT[k]||this.CAT["Autre"]; return {label:k,onClick:()=>this.setForm("category",k),style:chip(active,{bg:cat.b,c:cat.c})}; });
     const methodChips=["Carte","Espèces","Virement","Cash App","PayPal","Mobile Money"].map(m=>{ const active=S.form.method===m; return {label:m,onClick:()=>this.setForm("method",m),style:chip(active,{bg:C.brandBg,c:C.brand})}; });
 
     const toast=S.toast; const tOk=toast&&toast.type==="ok";
@@ -509,10 +523,11 @@ class Component extends DCLogic {
     const incMonths=[{value:"Tous",label:"Tous"}].concat(this._periodOptions(inc)).map(m=>({label:m.label,onClick:()=>this.setState({fIncMonth:m.value}),style:filt(selectedIncomePeriod===m.value)}));
     const incSources=["Toutes","Salaire","Freelance"].map(m=>({label:m,onClick:()=>this.setState({fIncSource:m}),style:filt(S.fIncSource===m)}));
     const expMonths=[{value:"Tous",label:"Tous"}].concat(this._periodOptions(exp)).map(m=>({label:m.label,onClick:()=>this.setState({fExpMonth:m.value}),style:filt(selectedExpensePeriod===m.value)}));
-    const expCats=["Toutes"].concat(Object.keys(this.CAT)).map(m=>({label:m,onClick:()=>this.setState({fExpCat:m}),style:filt(S.fExpCat===m)}));
+    const savedExpenseCats=exp.map(e=>String(e.cat||"").trim()).filter(Boolean);
+    const expCats=["Toutes"].concat(standardExpenseCats).concat(savedExpenseCats).filter((m,i,a)=>a.indexOf(m)===i).map(m=>({label:m,onClick:()=>this.setState({fExpCat:m}),style:filt(S.fExpCat===m)}));
     const catMap={}; exp.filter(e=>self._recordInPeriod(e,currentPeriod)&&self._same(e)).forEach(e=>{catMap[e.cat]=(catMap[e.cat]||0)+e.amount_minor;});
     const catMax=Math.max.apply(null,[1].concat(Object.keys(catMap).map(k=>catMap[k])));
-    const catBreak=Object.keys(catMap).sort((a,b)=>catMap[b]-catMap[a]).map(k=>{const cat=this.CAT[k]||this.CAT["Divers"]; return {cat:k,amountStr:this.mFmt(catMap[k],cur),color:cat.c,barStyle:{height:"10px",width:this.pct(catMap[k],catMax)+"%",background:cat.c,borderRadius:"99px",animation:"mcBar .9s ease both"},pctStr:this.pct(catMap[k],monthExpense)+" %"};});
+    const catBreak=Object.keys(catMap).sort((a,b)=>catMap[b]-catMap[a]).map(k=>{const cat=this.CAT[k]||this.CAT["Autre"]; return {cat:k,amountStr:this.mFmt(catMap[k],cur),color:cat.c,barStyle:{height:"10px",width:this.pct(catMap[k],catMax)+"%",background:cat.c,borderRadius:"99px",animation:"mcBar .9s ease both"},pctStr:this.pct(catMap[k],monthExpense)+" %"};});
     const rollingPeriods=this._rollingPeriods(6);
     const sumPeriod=(list,field,period)=>this._sum(list.filter(r=>this._recordInPeriod(r,period)),field);
     const im=rollingPeriods.map(period=>[this._periodChartLabel(period),sumPeriod(inc,"amount_minor",period),period]); const imMax=Math.max.apply(null,[1].concat(im.map(x=>x[1])));
@@ -848,7 +863,7 @@ class Component extends DCLogic {
     }
     this._maybeInitCloud();
   }
-  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); this._wireDebtDecisionUi(); }
+  componentDidUpdate(){ this._wireRows(); this._wireLogin(); this._fitLoginScreen(); this._wirePlanningUi(); this._wireDebtDecisionUi(); this._wireExpenseCategoryUi(); }
   componentWillUnmount(){
     try{
       clearTimeout(this._calendarTimer);
@@ -1014,8 +1029,13 @@ class Component extends DCLogic {
     if(/loyer|rent|logement|mortgage/.test(s)) return "Logement";
     if(/famille|family|taptap|transfert/.test(s)) return "Famille";
     if(/abo|subscription|apple|netflix|phone|téléphone/.test(s)) return "Abonnement";
-    if(/transport|essence|carburant|uber|bus/.test(s)) return "Transport";
-    return this._obClosed(v,["Logement","Famille","Abonnement","Transport","Autre"],"Autre");
+    if(/essence|carburant|station-service/.test(s)) return "Carburant";
+    if(/transport|uber|bus|train|taxi/.test(s)) return "Transport";
+    if(/don|charit|offrande/.test(s)) return "Dons";
+    if(/prestation|service/.test(s)) return "Prestations de service";
+    if(/loisir|plaisir|jeu|hobby/.test(s)) return "Loisirs / plaisir";
+    if(/sortie|cinéma|cinema|concert|bar/.test(s)) return "Sorties";
+    return this._obClosed(v,["Logement","Famille","Abonnement","Transport","Carburant","Dons","Prestations de service","Loisirs / plaisir","Sorties","Autre"],"Autre");
   }
   _obPriority(v){ return this._obClosed(v,["Haute","Moyenne","Basse"],"Moyenne"); }
   _obDefaultRow(kind){
@@ -1077,7 +1097,7 @@ class Component extends DCLogic {
     var fields={
       income:[["source","Nom de la source","text","InvenTech"],["amount","Montant","money","3200"],["frequency","Fréquence","select",["Hebdomadaire","Bi-hebdomadaire","Mensuel","Variable"]],["payday","Jour de paie","select",day],["income_type","Type","select",["Fixe","Variable"]]],
       accounts:[["name","Nom de la banque","text","Amegy"],["balance","Solde actuel","money","1200"],["role","Rôle","select",["Dépenses","Coussin de sécurité","Épargne","Autre"]]],
-      fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",fixedDay],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Autre"]]],
+      fixedExpenses:[["name","Nom","text","Loyer"],["amount","Montant","money","792,35"],["day","Jour du mois","select",fixedDay],["category","Catégorie","select",["Logement","Famille","Abonnement","Transport","Carburant","Dons","Prestations de service","Loisirs / plaisir","Sorties","Autre"]]],
       debts:[["name","À qui / pour quoi ?","text","Carte Capital One"],["balance","Montant restant","money","500"],["minimum","Minimum à payer","money","25"],["apr","Intérêt si connu","text","0"],["due","Jour limite","select",day]],
       goals:[["name","Objectif","text","Épargne décembre"],["target","Montant cible","money","10000"],["date","Date cible","text","2026-12-31"],["priority","Priorité","select",["Haute","Moyenne","Basse"]]],
       plannedPurchases:[["name","Objet","text","MacBook"],["price","Prix","money","900"],["schedule","Date ou contribution","text","2026-11-01 ou 75/semaine"],["priority","Priorité","select",["Haute","Moyenne","Basse"]],["image_url","Image optionnelle","text","https://..."]]
@@ -1814,6 +1834,46 @@ class Component extends DCLogic {
     refresh();
   }
 
+  _wireExpenseCategoryUi(){
+    try{
+      var existing=document.getElementById("mc-expense-other-wrap");
+      if(!this.state.addOpen || this.state.form.category!=="Autre"){
+        if(existing) existing.remove();
+        return;
+      }
+      if(existing) return;
+      var headings=Array.prototype.slice.call(document.querySelectorAll("h3"));
+      var title=headings.filter(function(el){ return String(el.textContent||"").trim()==="Ajouter une dépense"; })[0];
+      var modal=title && (title.closest ? title.closest(".mc-sc") : title.parentElement?.parentElement);
+      if(!modal) return;
+      var labels=Array.prototype.slice.call(modal.querySelectorAll("label"));
+      var categoryLabel=labels.filter(function(el){ return String(el.textContent||"").trim()==="Catégorie"; })[0];
+      var chips=categoryLabel && categoryLabel.nextElementSibling;
+      if(!chips) return;
+      var self=this, wrap=document.createElement("div");
+      wrap.id="mc-expense-other-wrap";
+      wrap.style.cssText="margin:-4px 0 16px";
+      var label=document.createElement("label");
+      label.htmlFor="mc-expense-other-category";
+      label.textContent="Précise le type de dépense";
+      label.style.cssText="display:block;font-size:12.5px;font-weight:700;color:#5A6B78;margin-bottom:7px";
+      var input=document.createElement("input");
+      input.id="mc-expense-other-category";
+      input.type="text";
+      input.maxLength=60;
+      input.value=String(typeof this._expenseOtherDraft==="string"?this._expenseOtherDraft:(this.state.form.otherCategory||""));
+      input.placeholder="Ex. Coiffeur, réparation téléphone…";
+      input.setAttribute("aria-label","Précise le type de dépense");
+      input.style.cssText="width:100%;border:1px solid #E1E4DE;background:#FAFBF9;border-radius:12px;padding:12px;font-size:13.5px;font-weight:600;outline:none;color:#17293C";
+      input.oninput=function(){ self._expenseOtherDraft=String(input.value||"").slice(0,60); };
+      var hint=document.createElement("div");
+      hint.textContent="Cette précision apparaîtra comme catégorie dans tes rapports.";
+      hint.style.cssText="font-size:11.5px;color:#8B98A2;margin-top:6px;line-height:1.4";
+      wrap.appendChild(label); wrap.appendChild(input); wrap.appendChild(hint);
+      chips.insertAdjacentElement("afterend",wrap);
+    }catch(e){}
+  }
+
   /* ---------- Make expense rows clickable ---------- */
   _wireRows(){
     try{
@@ -2019,7 +2079,7 @@ class Component extends DCLogic {
     var firstAcc=accounts[0]?accounts[0].name:"";
     const incomes=this._obRows("income",p).map(function(a){ return {id:mkId(),source:a.source||"Revenu",label:a.source||"Revenu",amount_minor:self._moneyInput(a.amount,cur),currency:cur,freq:a.frequency||"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Jour: "+(a.payday||"Variable")+"; type: "+(a.income_type||"Fixe")}; });
     if(!incomes.length && (p.lifestyle?.new_income_minor||0)>0) incomes.push({id:mkId(),source:"Revenu principal",label:"Revenu principal",amount_minor:Math.trunc(Number(p.lifestyle.new_income_minor)||0),currency:cur,freq:"Mensuel",date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,account:firstAcc,note:"Revenu mensuel actuel saisi pendant la configuration. Rythme de paie : "+(p.profile?.pay_frequency||"Mensuel")});
-    const expenses=this._obRows("fixedExpenses",p).map(function(a){ return {id:mkId(),cat:a.category||"Autre",payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,proof:null,note:"Dépense fixe onboarding; jour prévu: "+(a.day||"Variable")}; });
+    const expenses=this._obRows("fixedExpenses",p).map(function(a){ var cat=a.category==="Autre"?(a.name||"Autre"):(a.category||"Autre"); return {id:mkId(),cat:cat,payee:a.name||"Dépense fixe",amount_minor:self._moneyInput(a.amount,cur),currency:cur,method:"Prévu",account:firstAcc,date:self._fullFromIso(currentIso),date_iso:currentIso,period:currentPeriod,month:currentMonth,proof:null,note:"Dépense fixe onboarding; jour prévu: "+(a.day||"Variable")}; });
     var debts=this._obRows("debts",p).map(function(a){ var total=self._moneyInput(a.balance,cur); return {id:mkId(),name:a.name||"Dette",creditor:a.name||"Créancier",total_amount_minor:total,paid_amount_minor:0,currency:cur,due:a.due||"—",status:"À jour",minimum_minor:self._moneyInput(a.minimum,cur),apr_bps:Math.round(self._numInput(a.apr)*100)||0}; });
     var savings=[];
     if((p.emergency_target_minor||0)>0) savings.push({id:mkId(),name:"Coussin de sécurité",target_amount_minor:p.emergency_target_minor,current_amount_minor:0,currency:cur,date:"—",status:"En cours",priority:"Haute"});
