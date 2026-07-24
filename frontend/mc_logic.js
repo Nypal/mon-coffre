@@ -479,6 +479,65 @@ class Component extends DCLogic {
       topCategoryShare:this.pct(topCategoryAmount,total)
     };
   }
+  _categoryBudgets(){
+    const rows=this._plan().categoryBudgets;
+    return Array.isArray(rows)?rows:[];
+  }
+  _categoryBudget(currency, period, category){
+    const cur=this._cur(currency||this.state.currency), month=String(period||""), name=String(category||"").trim();
+    return this._categoryBudgets().find((row)=>row && this._cur(row.currency)===cur && String(row.period||"")===month && String(row.category||"")===name)||null;
+  }
+  _categorySpendMinor(category, period, currency){
+    const cur=this._cur(currency||this.state.currency), name=String(category||"").trim();
+    return (this.state.expenses||[]).reduce((total,row)=>{
+      if(this._rc(row)!==cur || !this._recordInPeriod(row,period) || String(row.cat||"Autre")!==name) return total;
+      return total+Math.max(0,Math.trunc(Number(row.amount_minor)||0));
+    },0);
+  }
+  _categoryBudgetProposal(sourceSpendMinor){
+    return Math.max(0,Math.round(Math.max(0,Math.trunc(Number(sourceSpendMinor)||0))*0.9));
+  }
+  _saveCategoryBudget(category, period, limitMinor, sourcePeriod, sourceSpendMinor, cb){
+    const name=String(category||"").trim(), month=String(period||""), cur=this._cur(this.state.currency);
+    const limit=Math.max(0,Math.trunc(Number(limitMinor)||0));
+    if(!name || !/^\d{4}-\d{2}$/.test(month) || limit<=0) return null;
+    const plan=this._plan();
+    const rows=(Array.isArray(plan.categoryBudgets)?plan.categoryBudgets:[]).filter((row)=>{
+      return !(row && this._cur(row.currency)===cur && String(row.period||"")===month && String(row.category||"")===name);
+    });
+    const budget={
+      currency:cur,
+      period:month,
+      category:name,
+      limit_minor:limit,
+      source_period:String(sourcePeriod||""),
+      source_spend_minor:Math.max(0,Math.trunc(Number(sourceSpendMinor)||0)),
+      updated_at:this._localIsoDate()
+    };
+    rows.push(budget);
+    plan.categoryBudgets=rows;
+    this._setPlan(plan,cb);
+    return budget;
+  }
+  _categoryBudgetProgress(budget){
+    if(!budget) return {ok:false};
+    const limit=Math.max(0,Math.trunc(Number(budget.limit_minor)||0));
+    const spent=this._categorySpendMinor(budget.category,budget.period,budget.currency);
+    const ratio=limit>0?Math.round(spent/limit*100):0;
+    return Object.assign({},budget,{
+      ok:true,
+      spent_minor:spent,
+      remaining_minor:Math.max(0,limit-spent),
+      over_minor:Math.max(0,spent-limit),
+      ratio:ratio,
+      bar_pct:Math.min(100,Math.max(0,ratio)),
+      status:spent>limit?"Budget dépassé":(ratio>=80?"À surveiller":"Dans le budget")
+    });
+  }
+  _categoryBudgetsForPeriod(period, currency){
+    const cur=this._cur(currency||this.state.currency), month=String(period||"");
+    return this._categoryBudgets().filter((row)=>row && this._cur(row.currency)===cur && String(row.period||"")===month).map((row)=>this._categoryBudgetProgress(row));
+  }
   dExp(e){ const cat=this.CAT[e.cat]||this.CAT["Autre"]; return Object.assign({},e,{amountStr:this.mFmt(e.amount_minor,this._rc(e)),iconStyle:this.iconBox(cat.c,cat.b,40),icon:cat.i,hasProof:!!e.proof,proofLabel:e.proof||""}); }
   dInc(i){ return Object.assign({},i,{amountStr:this.mFmt(i.amount_minor,this._rc(i))}); }
   dAcc(a){ return Object.assign({},a,{balStr:this.mFmt(a.balance_minor,this._rc(a)),iconStyle:this.iconBox(a.c,a.b,44),icon:this.ICONS[a.icon],borderStyle:a.linked?"1px solid #E7E9E4":"1.5px dashed #D3D8D1",footNote:a.linked?("Mis à jour · "+a.updated):"Compte non lié",cta:a.linked?"Mettre à jour":"Lier ce compte",onCta:()=>this.openForm("account",{account:a})}); }
@@ -991,7 +1050,8 @@ class Component extends DCLogic {
       monthlyReview:{enabled:true,detail:"detailed",day:"end"},
       realEstate:{status:"not_yet",target_price_minor:0,rate_bps:700,term_months:360,linked_goal_name:"Apport immobilier",investor_mode:false,estimated_rent_minor:0},
       simulator:{extra_income_minor:0,freed_debt_minor:0,rate_bps:650,extra_down_payment_minor:0},
-      plannedPurchase:{tax_pct:8.25,finance_low_pct:8,finance_high_pct:17}
+      plannedPurchase:{tax_pct:8.25,finance_low_pct:8,finance_high_pct:17},
+      categoryBudgets:[]
     };
   }
   _mergePlan(plan){
@@ -1862,6 +1922,29 @@ class Component extends DCLogic {
     refresh();
   }
 
+  _openCategoryBudgetPlanner(category, sourcePeriod, sourceSpendMinor, targetPeriod){
+    const cur=this._cur(this.state.currency), month=targetPeriod||this._shiftPeriod(sourcePeriod,1);
+    const existing=this._categoryBudget(cur,month,category);
+    const proposed=existing?Math.max(0,Math.trunc(Number(existing.limit_minor)||0)):this._categoryBudgetProposal(sourceSpendMinor);
+    const body=document.createElement("div");
+    body.style.cssText=this._plannerStyle();
+    body.innerHTML='<div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:14px;padding:12px;margin-bottom:14px"><div style="font-size:11.5px;font-weight:900;color:#3F9A5A;text-transform:uppercase;letter-spacing:.04em">Catégorie à ajuster</div><div style="font-size:18px;font-weight:900;color:#17293C;margin-top:4px">'+this._esc(category)+'</div><div style="font-size:12.5px;color:#5A6B78;margin-top:4px">Dépensé en '+this._esc(this._periodLabel(sourcePeriod))+' : <b>'+this._esc(this.mFmt(sourceSpendMinor,cur))+'</b></div></div><label for="mc-category-budget-limit" style="display:block;font-size:12.5px;font-weight:800;color:#5A6B78;margin-bottom:7px">Budget maximum pour '+this._esc(this._periodLabel(month))+'</label><input id="mc-category-budget-limit" inputmode="decimal" value="'+this._esc(this._plain(proposed,cur))+'" style="width:100%;border:1px solid #E1E4DE;background:#FAFBF9;border-radius:12px;padding:12px;font-size:15px;font-weight:800;outline:none;color:#17293C"><div id="mc-category-budget-impact" style="font-size:12.5px;color:#5A6B78;line-height:1.45;margin:8px 0 14px"></div><div style="font-size:11.5px;color:#8B98A2;line-height:1.45">La proposition initiale vise 10 % de moins. Tu gardes le dernier mot et peux ajuster ce montant à tout moment.</div>';
+    const input=body.querySelector("#mc-category-budget-limit");
+    const impact=body.querySelector("#mc-category-budget-impact");
+    const refreshImpact=()=>{
+      const limit=this.mParse(input.value,cur), delta=Math.trunc(Number(sourceSpendMinor)||0)-limit;
+      impact.textContent=delta>0?"Économie visée : "+this.mFmt(delta,cur):delta<0?"Budget augmenté de "+this.mFmt(Math.abs(delta),cur):"Même budget que le mois observé.";
+    };
+    input.addEventListener("input",refreshImpact);
+    refreshImpact();
+    this._mcModal(existing?"Ajuster le budget":"Budget du mois prochain",body,()=>{
+      const limit=this.mParse(input.value,cur);
+      if(limit<=0) return "Indique un budget supérieur à zéro.";
+      this._saveCategoryBudget(category,month,limit,sourcePeriod,sourceSpendMinor,()=>this.showToast("ok","Budget enregistré pour "+this._periodLabel(month)+"."));
+      return "";
+    },existing?"Mettre à jour":"Enregistrer ce budget");
+  }
+
   _wireExpenseInsightsUi(){
     try{
       const existing=document.getElementById("mc-expense-insights");
@@ -1870,7 +1953,9 @@ class Component extends DCLogic {
         return;
       }
       const insights=this._expenseInsights();
-      if(!insights.ok){
+      const selected=this.state.fExpMonth==="current"?this._currentPeriod():this.state.fExpMonth;
+      const periodBudgets=selected==="Tous"?[]:this._categoryBudgetsForPeriod(selected,this.state.currency);
+      if(!insights.ok && !periodBudgets.length){
         if(existing) existing.remove();
         return;
       }
@@ -1881,9 +1966,31 @@ class Component extends DCLogic {
       if(!host) return;
       if(existing) existing.remove();
       const largest=insights.largest||{}, panel=document.createElement("section");
+      const sourcePeriod=insights.ok?(insights.period==="Tous"?this._currentPeriod():insights.period):selected;
+      const nextPeriod=this._shiftPeriod(sourcePeriod,1);
+      const nextBudget=insights.ok?this._categoryBudget(this.state.currency,nextPeriod,insights.topCategory):null;
+      const insightHtml=insights.ok?'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px"><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Plus grosse dépense</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(this.mFmt(insights.largestAmountMinor,this.state.currency))+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(largest.payee||"Dépense")+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc((largest.cat||"Autre")+(largest.date?" · "+largest.date:""))+'</div></div><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Catégorie principale</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(insights.topCategory)+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(this.mFmt(insights.topCategoryAmountMinor,this.state.currency))+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc(insights.topCategoryShare+" % de tes dépenses")+'</div></div></div>':'<div style="font-size:13px;color:#5A6B78;background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px">Aucune dépense enregistrée pour ce mois. Tes budgets restent actifs et prêts à être suivis.</div>';
+      const planHtml=insights.ok?'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid #EFF1EC;margin-top:13px;padding-top:13px"><div><div style="font-size:12.5px;font-weight:900;color:#17293C">'+this._esc(nextBudget?"Budget prévu pour "+this._periodLabel(nextPeriod):"Préparer "+this._periodLabel(nextPeriod))+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc(nextBudget?insights.topCategory+" : "+this.mFmt(nextBudget.limit_minor,this.state.currency):"Proposition : réduire "+insights.topCategory+" de 10 %, puis ajuster librement.")+'</div></div><button id="mc-expense-budget-open" type="button" style="padding:10px 12px;border-radius:11px;background:#EAF1F8;color:#1E5081;border:1px solid #D3E0EE;font-size:12.5px;font-weight:900;cursor:pointer">'+this._esc(nextBudget?"Ajuster le budget":"Budgetiser le mois prochain")+'</button></div>':'';
+      const budgetRows=periodBudgets.map((budget,index)=>{
+        const tone=budget.over_minor>0?"#C15F4C":(budget.ratio>=80?"#B98A2E":"#3F9A5A");
+        const detail=budget.over_minor>0?"Dépassé de "+this.mFmt(budget.over_minor,budget.currency):"Reste "+this.mFmt(budget.remaining_minor,budget.currency);
+        return '<div style="padding:10px 0;'+(index?"border-top:1px solid #EFF1EC":"")+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="min-width:0"><div style="font-size:13px;font-weight:900;color:#17293C">'+this._esc(budget.category)+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:2px">'+this._esc(this.mFmt(budget.spent_minor,budget.currency)+" dépensé sur "+this.mFmt(budget.limit_minor,budget.currency))+'</div></div><button type="button" data-mc-budget-adjust="'+index+'" style="padding:7px 9px;border-radius:9px;background:#fff;color:#1E5081;border:1px solid #DDE0DA;font-size:11.5px;font-weight:900;cursor:pointer">Ajuster</button></div><div style="height:7px;background:#EFF1EC;border-radius:99px;margin:8px 0 5px;overflow:hidden"><div style="height:100%;width:'+budget.bar_pct+'%;background:'+tone+';border-radius:99px"></div></div><div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;color:'+tone+'"><span>'+this._esc(budget.status)+'</span><span>'+this._esc(detail)+'</span></div></div>';
+      }).join("");
+      const budgetsHtml=periodBudgets.length?'<div style="border-top:1px solid #EFF1EC;margin-top:13px;padding-top:13px"><div style="font-size:12.5px;font-weight:900;color:#17293C;margin-bottom:4px">Budgets de '+this._esc(this._periodLabel(selected))+'</div>'+budgetRows+'</div>':'';
       panel.id="mc-expense-insights";
       panel.style.cssText="background:#fff;border:1px solid #E7E9E4;border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(20,40,60,.04)";
-      panel.innerHTML='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div><div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:4px">Repère dépenses</div><h3 style="margin:0;font-size:17px;font-weight:900;color:#17293C">Où part le plus d’argent ?</h3></div><span style="font-size:11.5px;font-weight:800;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:6px 9px">'+this._esc(insights.periodLabel)+'</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px"><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Plus grosse dépense</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(this.mFmt(insights.largestAmountMinor,this.state.currency))+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(largest.payee||"Dépense")+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc((largest.cat||"Autre")+(largest.date?" · "+largest.date:""))+'</div></div><div style="background:#F7F8F5;border:1px solid #EFF1EC;border-radius:13px;padding:12px"><div style="font-size:11.5px;font-weight:800;color:#8B98A2;margin-bottom:5px">Catégorie principale</div><div style="font-size:20px;font-weight:900;color:#17293C">'+this._esc(insights.topCategory)+'</div><div style="font-size:13px;font-weight:800;color:#5A6B78;margin-top:3px">'+this._esc(this.mFmt(insights.topCategoryAmountMinor,this.state.currency))+'</div><div style="font-size:11.5px;color:#8B98A2;margin-top:3px">'+this._esc(insights.topCategoryShare+" % de tes dépenses")+'</div></div></div>';
+      panel.innerHTML='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div><div style="font-size:11.5px;font-weight:900;letter-spacing:.04em;color:#3F9A5A;text-transform:uppercase;margin-bottom:4px">Repère dépenses</div><h3 style="margin:0;font-size:17px;font-weight:900;color:#17293C">Où part le plus d’argent ?</h3></div><span style="font-size:11.5px;font-weight:800;color:#1E5081;background:#EAF1F8;border-radius:99px;padding:6px 9px">'+this._esc(insights.ok?insights.periodLabel:this._periodLabel(selected))+'</span></div>'+insightHtml+planHtml+budgetsHtml;
+      const openButton=panel.querySelector("#mc-expense-budget-open");
+      if(openButton) openButton.onclick=()=>this._openCategoryBudgetPlanner(insights.topCategory,sourcePeriod,insights.topCategoryAmountMinor,nextPeriod);
+      Array.prototype.forEach.call(panel.querySelectorAll("[data-mc-budget-adjust]"),(button)=>{
+        const budget=periodBudgets[Number(button.getAttribute("data-mc-budget-adjust"))];
+        if(!budget) return;
+        button.onclick=()=>{
+          const previous=budget.source_period||this._shiftPeriod(budget.period,-1);
+          const observed=budget.source_spend_minor||this._categorySpendMinor(budget.category,previous,budget.currency);
+          this._openCategoryBudgetPlanner(budget.category,previous,observed,budget.period);
+        };
+      });
       if(totalCard.nextSibling) host.insertBefore(panel,totalCard.nextSibling);
       else host.appendChild(panel);
     }catch(e){}
