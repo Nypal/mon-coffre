@@ -110,6 +110,64 @@ assert(
   "transaction chooser must expose both income and expense actions"
 );
 
+const expenseCategories = new Component();
+expenseCategories.props = { mode: "desktop" };
+[
+  "Carburant",
+  "Dons",
+  "Prestations de service",
+  "Loisirs / plaisir",
+  "Sorties",
+  "Autre",
+].forEach((category) => {
+  assert(expenseCategories.CAT[category], `expense category ${category} must be available`);
+});
+assert(expenseCategories._obCategory("achat essence") === "Carburant", "fuel expenses must normalize to Carburant");
+assert(expenseCategories._obCategory("don association") === "Dons", "donations must normalize to Dons");
+assert(
+  expenseCategories._obCategory("prestation de service") === "Prestations de service",
+  "service expenses must normalize to Prestations de service"
+);
+let expenseWarning = "";
+expenseCategories.showToast = (_type, message) => {
+  expenseWarning = message;
+};
+expenseCategories._persist = () => {};
+expenseCategories._trackFeature = () => {};
+expenseCategories.state.currency = "USD";
+expenseCategories.state.expenses = [];
+expenseCategories.state.accounts = [
+  { name: "Checking", balance_minor: 10000, currency: "USD", linked: true },
+];
+expenseCategories.state.form = {
+  amount: "25",
+  category: "Autre",
+  otherCategory: "",
+  method: "Carte",
+  account: "Checking",
+  payee: "Local shop",
+  proof: null,
+};
+expenseCategories.submitExpense();
+assert(expenseCategories.state.expenses.length === 0, "Other must not save without a precise category");
+assert(expenseWarning.includes("Précise"), "Other must explain that a precise category is required");
+expenseCategories._expenseOtherDraft = "Coiffeur";
+expenseCategories.submitExpense();
+assert(expenseCategories.state.expenses[0].cat === "Coiffeur", "Other detail must become the saved category");
+const expenseCategoryVals = expenseCategories.renderVals();
+assert(
+  expenseCategoryVals.expCats.some((category) => category.label === "Coiffeur"),
+  "custom expense categories must be available in report filters"
+);
+assert(
+  expenseCategoryVals.catChips.some((category) => category.label === "Coiffeur"),
+  "custom expense categories must be reusable from the expense form"
+);
+assert(
+  Component.prototype._wireExpenseCategoryUi.toString().includes("mc-expense-other-category"),
+  "the expense form must expose a dedicated Other detail field"
+);
+
 const calendar = new Component();
 calendar.props = { mode: "desktop" };
 assert(
@@ -617,6 +675,7 @@ console.log(
         "neutral onboarding label",
         "calendar-synchronized ISO dates",
         "balanced income and expense quick add",
+        "expanded and reusable expense categories",
         "dashboard empty-state guidance",
         "privacy-preserving product evaluation",
       ],
