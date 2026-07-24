@@ -192,6 +192,33 @@ assert(
   "the Expenses page must explain both largest transaction and largest category"
 );
 
+const expenseBudgets = new Component();
+expenseBudgets.props = { mode: "desktop" };
+expenseBudgets.state.currency = "USD";
+expenseBudgets.state.financialPlan = expenseBudgets._mergePlan({ onboarding: { completed: true } });
+expenseBudgets.state.expenses = [
+  { id: "fuel-july", cat: "Carburant", amount_minor: 65000, currency: "USD", date_iso: "2026-07-10" },
+  { id: "fuel-august", cat: "Carburant", amount_minor: 30000, currency: "USD", date_iso: "2026-08-10" },
+  { id: "fuel-eur", cat: "Carburant", amount_minor: 999999, currency: "EUR", date_iso: "2026-08-10" },
+];
+assert(expenseBudgets._categoryBudgetProposal(65000) === 58500, "next-month budget proposal must target ten percent less");
+const savedBudget = expenseBudgets._saveCategoryBudget("Carburant", "2026-08", 55000, "2026-07", 65000);
+assert(savedBudget.limit_minor === 55000, "category budget amounts must stay in integer minor units");
+assert(expenseBudgets._categoryBudget("USD", "2026-08", "Carburant").limit_minor === 55000, "saved category budgets must be retrievable");
+let fuelProgress = expenseBudgets._categoryBudgetProgress(savedBudget);
+assert(fuelProgress.spent_minor === 30000, "budget progress must isolate the selected month and currency");
+assert(fuelProgress.remaining_minor === 25000 && fuelProgress.status === "Dans le budget", "budget progress must explain the remaining amount");
+expenseBudgets._saveCategoryBudget("Carburant", "2026-08", 25000, "2026-07", 65000);
+assert(expenseBudgets._categoryBudgetsForPeriod("2026-08", "USD").length === 1, "adjusting a budget must replace it instead of duplicating it");
+fuelProgress = expenseBudgets._categoryBudgetsForPeriod("2026-08", "USD")[0];
+assert(fuelProgress.over_minor === 5000 && fuelProgress.status === "Budget dépassé", "budget progress must identify overruns");
+assert(expenseBudgets._categoryBudgetsForPeriod("2026-08", "EUR").length === 0, "category budgets must never mix currencies");
+assert(
+  Component.prototype._openCategoryBudgetPlanner.toString().includes("Budget du mois prochain") &&
+    Component.prototype._wireExpenseInsightsUi.toString().includes("Budgetiser le mois prochain"),
+  "the Expenses page must let users create and adjust next-month budgets"
+);
+
 const calendar = new Component();
 calendar.props = { mode: "desktop" };
 assert(
@@ -701,6 +728,7 @@ console.log(
         "balanced income and expense quick add",
         "expanded and reusable expense categories",
         "largest expense and category insights",
+        "next-month category budgets",
         "dashboard empty-state guidance",
         "privacy-preserving product evaluation",
       ],
