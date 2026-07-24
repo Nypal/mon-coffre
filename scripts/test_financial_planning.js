@@ -168,6 +168,30 @@ assert(
   "the expense form must expose a dedicated Other detail field"
 );
 
+const expenseInsights = new Component();
+expenseInsights.props = { mode: "desktop" };
+expenseInsights.state.currency = "USD";
+expenseInsights.state.expenses = [
+  { id: "rent", cat: "Logement", payee: "Landlord", amount_minor: 60000, currency: "USD", date_iso: "2026-07-01" },
+  { id: "fuel-1", cat: "Carburant", payee: "Station A", amount_minor: 35000, currency: "USD", date_iso: "2026-07-03" },
+  { id: "fuel-2", cat: "Carburant", payee: "Station B", amount_minor: 30000, currency: "USD", date_iso: "2026-07-10" },
+  { id: "other-month", cat: "Sorties", payee: "Concert", amount_minor: 90000, currency: "USD", date_iso: "2026-06-15" },
+  { id: "other-currency", cat: "Loisirs / plaisir", payee: "Trip", amount_minor: 999999, currency: "EUR", date_iso: "2026-07-20" },
+];
+const julyExpenseInsights = expenseInsights._expenseInsights("2026-07");
+assert(julyExpenseInsights.ok === true, "expense insights must be available when the selected period has expenses");
+assert(julyExpenseInsights.totalMinor === 125000, "expense insights must total only the selected period and currency");
+assert(julyExpenseInsights.largest.id === "rent", "expense insights must identify the largest individual expense");
+assert(julyExpenseInsights.topCategory === "Carburant", "expense insights must identify the highest aggregate category");
+assert(julyExpenseInsights.topCategoryAmountMinor === 65000, "top category amount must aggregate every matching expense");
+assert(julyExpenseInsights.topCategoryShare === 52, "top category share must be calculated from the filtered total");
+assert(expenseInsights._expenseInsights("2025-01").ok === false, "empty periods must not produce misleading insights");
+assert(
+  Component.prototype._wireExpenseInsightsUi.toString().includes("Plus grosse dépense") &&
+    Component.prototype._wireExpenseInsightsUi.toString().includes("Catégorie principale"),
+  "the Expenses page must explain both largest transaction and largest category"
+);
+
 const calendar = new Component();
 calendar.props = { mode: "desktop" };
 assert(
@@ -676,6 +700,7 @@ console.log(
         "calendar-synchronized ISO dates",
         "balanced income and expense quick add",
         "expanded and reusable expense categories",
+        "largest expense and category insights",
         "dashboard empty-state guidance",
         "privacy-preserving product evaluation",
       ],
